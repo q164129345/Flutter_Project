@@ -10,12 +10,10 @@ class MyApp extends StatelessWidget {
   // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
-    const String appTitle = 'Flutter layout demo';
     return MaterialApp(
-      home: Scaffold(
-        appBar: AppBar(title: const Text(appTitle)), //
-        body: const Center(child: Text('Hello, World!')),
-      ),
+      title: 'start01_hello_world',
+      theme: ThemeData(scaffoldBackgroundColor: Colors.white),
+      home: Scaffold(body: const Center(child: Text('Hello, World!!'))),
     );
   }
 }
