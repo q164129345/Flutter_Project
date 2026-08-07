@@ -33,6 +33,12 @@ class _ScaffoldActionButtonState extends State<ScaffoldActionButton> {
     return Scaffold(
       appBar: AppBar(title: const Text('Scaffold Action Button')),
       body: Center(child: Text('You have pressed the button $_counter times.')),
+      backgroundColor: const Color.fromRGBO(
+        254,
+        248,
+        236,
+        1,
+      ), // 设置背景颜色（类似Noctis的Lux主题的背景颜色）
       floatingActionButton: FloatingActionButton(
         onPressed: () => setState(() {
           _counter++;
