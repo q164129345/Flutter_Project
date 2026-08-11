@@ -29,24 +29,6 @@ class _ScaffoldActionButtonState extends State<ScaffoldActionButton> {
   // 私有变量_counter，用于记录按钮被点击的次数
   int _counter = 0;
 
-  // 私有方法_addNumber，用于增加_counter的值
-  void _addNumber() {
-    _counter++;
-  }
-
-  // 私有方法_incrementCounter，用于处理按钮点击事件
-  void _incrementCounter() {
-    // 调用setState方法，执行函数_addNumber，然后更新UI
-    // 说白了，调用setState方法的作用就是告诉Flutter框架，状态发生了变化，需要重新构建UI
-    // 如果这里直接执行_addNumber()，UI不会更新，但_counter的值会增加
-    setState(_addNumber);
-
-    // 用匿名函数来改进写法
-    // setState(() {
-    //   _counter++;
-    // });
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -59,7 +41,11 @@ class _ScaffoldActionButtonState extends State<ScaffoldActionButton> {
         1,
       ), // 设置背景颜色（类似Noctis的Lux主题的背景颜色）
       floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter, // 按钮被点击时，调用函数_incrementCounter
+        onPressed: () {
+          setState(() {
+            _counter++;
+          });
+        }, // 按钮被点击时，调用函数_incrementCounter
         tooltip: 'Increment _counter', // 按钮的提示信息
         child: const Icon(Icons.add), // 按钮的图标
       ),
