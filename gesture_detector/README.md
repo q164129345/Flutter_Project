@@ -1,3 +1,3 @@
-# foc_studio
+# gesture_detector
 
 A new Flutter project.
