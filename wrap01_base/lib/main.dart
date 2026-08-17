@@ -28,10 +28,10 @@ class MainApp extends StatelessWidget {
           height: double.infinity,
           color: Colors.orange,
           child: Wrap(
-            spacing: 10, // 水平间隔
-            runSpacing: 10, // 垂直间隔
-            alignment: WrapAlignment.center, // 对齐
-            direction: Axis.horizontal, // 水平
+            spacing: 10, // 水平方向的widget间隔
+            runSpacing: 10, // run的垂直间隔
+            alignment: WrapAlignment.center, // run内部的对齐方式：居中对齐
+            direction: Axis.horizontal, // 轴：水平对齐
             children: getList(),
           ),
         ),
