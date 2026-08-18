@@ -55,7 +55,7 @@ class _MainAppState extends State<MainApp> {
                 // 带动画的跳转
                 onTap: () => _controller.animateTo(
                   0, // 顶部位置
-                  duration: Duration(seconds: 2), // 动画时间2S
+                  duration: Duration(seconds: 1), // 动画时间1S
                   curve: Curves.easeIn, // 动画效果
                 ),
                 child: Container(
@@ -82,7 +82,7 @@ class _MainAppState extends State<MainApp> {
                 // 带动画的跳转
                 onTap: () => _controller.animateTo(
                   _controller.position.maxScrollExtent, // 跳转到最底部
-                  duration: Duration(seconds: 2), // 动画时间2S
+                  duration: Duration(seconds: 1), // 动画时间1S
                   curve: Curves.easeIn, // 动画效果
                 ),
                 child: Container(
