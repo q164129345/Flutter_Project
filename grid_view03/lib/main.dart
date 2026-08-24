@@ -35,6 +35,7 @@ class _MainAppState extends State<MainApp> {
           ), // Text 标题组件配置到这里结束。
         ), // AppBar 应用栏配置到这里结束。
         body: GridView.builder(
+          padding: EdgeInsets.all(20), // 在网格列表四周设置 20 像素的内边距。
           // 将页面主体设置为按需创建子项的网格列表。
           // 这里是重点！！！！！！！！！！！！！！！
           // 按照列数
@@ -50,7 +51,7 @@ class _MainAppState extends State<MainApp> {
             mainAxisSpacing: 10, // 设置网格子项之间的竖直间距为 10。
             crossAxisSpacing: 10, // 设置网格子项之间的水平间距为 10。
           ), // 按最大宽度排列的网格布局规则配置到这里结束。
-
+          itemCount: 100, // 指定网格列表一共创建 100 个子项。
           itemBuilder: (BuildContext context, int index) {
             // 根据索引 index 按需创建每一个网格子项。
             return Container(
