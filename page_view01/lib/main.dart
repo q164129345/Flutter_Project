@@ -117,30 +117,32 @@ class _MainAppState extends State<MainApp> {
                 ], // 页面列表结束。
               ), // PageView 结束。
             ), // Expanded 组件结束。
-            SizedBox(height: 10),
-            Row(
-              // 使用横向布局放置三个按钮。
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly, // 均匀排列按钮。
-              children: [
-                // 定义横向布局中的按钮。
-                ElevatedButton(
-                  // 创建第一个页面按钮。
-                  onPressed: () => _changePage(0), // 点击后切换到第一页。
-                  child: const Text('第 1 页'), // 设置按钮文字。
-                ), // 第一个按钮结束。
-                ElevatedButton(
-                  // 创建第二个页面按钮。
-                  onPressed: () => _changePage(1), // 点击后切换到第二页。
-                  child: const Text('第 2 页'), // 设置按钮文字。
-                ), // 第二个按钮结束。
-                ElevatedButton(
-                  // 创建第三个页面按钮。
-                  onPressed: () => _changePage(2), // 点击后切换到第三页。
-                  child: const Text('第 3 页'), // 设置按钮文字。
-                ), // 第三个按钮结束。
-              ], // 按钮列表结束。
-            ), // Row 组件结束。
-            SizedBox(height: 10),
+            Padding(
+              // 给按钮区域添加四周间距。
+              padding: const EdgeInsets.all(12), // 设置 12 像素的间距。
+              child: Row(
+                // 使用横向布局放置三个按钮。
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly, // 均匀排列按钮。
+                children: [
+                  // 定义横向布局中的按钮。
+                  ElevatedButton(
+                    // 创建第一个页面按钮。
+                    onPressed: () => _changePage(0), // 点击后切换到第一页。
+                    child: const Text('第 1 页'), // 设置按钮文字。
+                  ), // 第一个按钮结束。
+                  ElevatedButton(
+                    // 创建第二个页面按钮。
+                    onPressed: () => _changePage(1), // 点击后切换到第二页。
+                    child: const Text('第 2 页'), // 设置按钮文字。
+                  ), // 第二个按钮结束。
+                  ElevatedButton(
+                    // 创建第三个页面按钮。
+                    onPressed: () => _changePage(2), // 点击后切换到第三页。
+                    child: const Text('第 3 页'), // 设置按钮文字。
+                  ), // 第三个按钮结束。
+                ], // 按钮列表结束。
+              ), // Row 组件结束。
+            ), // 按钮区域结束。
           ], // 纵向布局的组件列表结束。
         ), // Column 组件结束。
       ), // 页面基础结构结束。
