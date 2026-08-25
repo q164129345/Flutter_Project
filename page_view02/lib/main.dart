@@ -16,6 +16,12 @@ class MainApp extends StatefulWidget {
 class _MainAppState extends State<MainApp> {
   // 定义 MainApp 的状态类。
   final PageController _pageController = PageController(); // 创建页面控制器。
+  static const List<Color> _pageColors = [
+    // 定义每个页面的背景颜色。
+    Colors.red,
+    Colors.green,
+    Colors.blue,
+  ];
 
   void _changePage(int pageIndex) {
     // 定义按钮切换页面的方法。
@@ -47,7 +53,7 @@ class _MainAppState extends State<MainApp> {
           backgroundColor: Colors.amberAccent, // 设置标题栏背景色。
           title: const Text(
             // 创建标题文字。
-            'Page_View01实例', // 设置标题内容。
+            'Page_View02实例', // 设置标题内容。
             style: TextStyle(
               // 设置标题样式。
               color: Colors.blueAccent, // 设置标题颜色。
@@ -61,60 +67,27 @@ class _MainAppState extends State<MainApp> {
             // 定义纵向布局中的组件。
             Expanded(
               // 让 PageView 占据按钮以外的剩余空间。
-              child: PageView(
-                // 创建可左右滑动的 PageView。
+              child: PageView.builder(
+                // 创建按需生成页面的 PageView。
                 controller: _pageController, // 把页面控制器交给 PageView。
-                children: [
-                  // 定义 PageView 中的页面。
-                  Container(
-                    // 创建第一个页面。
-                    color: Colors.red, // 设置红色背景。
-                    child: const Center(
+                itemCount: _pageColors.length, // 设置页面总数。
+                itemBuilder: (context, index) {
+                  // 根据索引按需构建当前页面。
+                  return Container(
+                    color: _pageColors[index], // 设置当前页面的背景色。
+                    child: Center(
                       // 让内容居中。
                       child: Text(
-                        // 创建页码文字。
-                        '第 1 页', // 设置第一页文字。
-                        style: TextStyle(
+                        '第 ${index + 1} 页', // 根据索引生成页码文字。
+                        style: const TextStyle(
                           // 设置文字样式。
                           color: Colors.white, // 设置白色文字。
                           fontSize: 32, // 设置文字字号。
                         ), // 文字样式结束。
                       ), // 页码文字结束。
                     ), // 居中组件结束。
-                  ), // 第一个页面结束。
-                  Container(
-                    // 创建第二个页面。
-                    color: Colors.green, // 设置绿色背景。
-                    child: const Center(
-                      // 让内容居中。
-                      child: Text(
-                        // 创建页码文字。
-                        '第 2 页', // 设置第二页文字。
-                        style: TextStyle(
-                          // 设置文字样式。
-                          color: Colors.white, // 设置白色文字。
-                          fontSize: 32, // 设置文字字号。
-                        ), // 文字样式结束。
-                      ), // 页码文字结束。
-                    ), // 居中组件结束。
-                  ), // 第二个页面结束。
-                  Container(
-                    // 创建第三个页面。
-                    color: Colors.blue, // 设置蓝色背景。
-                    child: const Center(
-                      // 让内容居中。
-                      child: Text(
-                        // 创建页码文字。
-                        '第 3 页', // 设置第三页文字。
-                        style: TextStyle(
-                          // 设置文字样式。
-                          color: Colors.white, // 设置白色文字。
-                          fontSize: 32, // 设置文字字号。
-                        ), // 文字样式结束。
-                      ), // 页码文字结束。
-                    ), // 居中组件结束。
-                  ), // 第三个页面结束。
-                ], // 页面列表结束。
+                  ); // 当前页面结束。
+                }, // 页面构建方法结束。
               ), // PageView 结束。
             ), // Expanded 组件结束。
             Padding(
