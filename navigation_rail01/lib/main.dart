@@ -47,7 +47,7 @@ class _MainPageState extends State<MainPage> {
             },
             // 暂时把文字全部显示出来
             labelType: NavigationRailLabelType.all,
-            //
+            // 每个可点击目的地
             destinations: const [
               NavigationRailDestination(
                 icon: Icon(Icons.settings),
