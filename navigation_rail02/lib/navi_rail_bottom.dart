@@ -71,8 +71,6 @@ class _NaviRailBottomState extends State<NaviRailBottomState> {
                 });
               },
 
-              //mouseCursor: SystemMouseCursors.click, // 鼠标悬停时显示可点击的手形光标
-              borderRadius: BorderRadius.circular(20), // 将水波纹裁剪为胶囊形圆角
               // 悬停和按下背景由 Material 根据状态重新构建后显示。 负责。
               hoverColor: Colors.transparent, // 透明
               highlightColor: Colors.transparent, // 透明
