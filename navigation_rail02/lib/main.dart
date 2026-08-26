@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'navi_rail_bottom.dart';
 
 void main() {
   runApp(const MainApp());
@@ -69,23 +70,14 @@ class _MainPageState extends State<MainPage> {
 
             trailingAtBottom: true,
 
-            trailing: InkWell(
+            trailing: NaviRailBottomState(
+              icon: Icons.settings,
+              selected: _selectedIndex == 3,
               onTap: () {
                 setState(() {
                   _selectedIndex = 3;
                 });
               },
-              child: const Padding(
-                padding: EdgeInsets.all(12),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.settings),
-                    SizedBox(height: 4),
-                    Text('SYS'),
-                  ],
-                ),
-              ),
             ),
           ),
 
