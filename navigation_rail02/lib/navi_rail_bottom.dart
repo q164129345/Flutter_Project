@@ -44,16 +44,16 @@ class _NaviRailBottomState extends State<NaviRailBottomState> {
         // Padding 位于 InkWell 外面，避免扩大水波纹区域。
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          width: 56,
-          height: 32,
-          clipBehavior: Clip.antiAlias,
+          duration: const Duration(milliseconds: 150), // 设置背景状态切换的动画时长
+          width: 56, // 设置指示器宽度
+          height: 32, // 设置指示器高度
+          clipBehavior: Clip.antiAlias, // 按圆角裁剪水波纹，防止波纹超出指示器
           decoration: BoxDecoration(
-            color: indicatorColor,
-            borderRadius: BorderRadius.circular(20),
+            color: indicatorColor, // 根据选中、按下或悬停状态显示背景色
+            borderRadius: BorderRadius.circular(20), // 设置胶囊形圆角
           ),
           child: Material(
-            color: Colors.transparent,
+            color: Colors.transparent, // 透明
             child: InkWell(
               onTap: widget.onTap,
 
@@ -71,13 +71,14 @@ class _NaviRailBottomState extends State<NaviRailBottomState> {
                 });
               },
 
-              mouseCursor: SystemMouseCursors.click,
-              borderRadius: BorderRadius.circular(20),
-
+              //mouseCursor: SystemMouseCursors.click, // 鼠标悬停时显示可点击的手形光标
+              borderRadius: BorderRadius.circular(20), // 将水波纹裁剪为胶囊形圆角
               // 悬停和按下背景由 AnimatedContainer 负责。
-              hoverColor: Colors.transparent,
-              highlightColor: Colors.transparent,
-              splashColor: colorScheme.primary.withAlpha(30),
+              hoverColor: Colors.transparent, // 透明
+              highlightColor: Colors.transparent, // 透明
+              splashColor: colorScheme.primary.withAlpha(
+                30,
+              ), // 使用当前主题的主色，并将它设置为较透明的颜色。
 
               child: Icon(
                 widget.icon,
