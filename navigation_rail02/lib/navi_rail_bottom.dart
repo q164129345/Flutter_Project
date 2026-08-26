@@ -40,47 +40,51 @@ class _NaviRailBottomState extends State<NaviRailBottomState> {
 
     return Tooltip(
       message: widget.tooltip,
-      child: InkWell(
-        onTap: widget.onTap,
+      child: Padding(
+        // Padding 位于 InkWell 外面，避免扩大水波纹区域。
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          width: 56,
+          height: 32,
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: indicatorColor,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: widget.onTap,
 
-        // 鼠标进入/离开
-        onHover: (value) {
-          setState(() {
-            _hovered = value;
-          });
-        },
+              // 鼠标进入/离开
+              onHover: (value) {
+                setState(() {
+                  _hovered = value;
+                });
+              },
 
-        // 鼠标按下/松开
-        onHighlightChanged: (value) {
-          setState(() {
-            _pressed = value;
-          });
-        },
+              // 鼠标按下/松开
+              onHighlightChanged: (value) {
+                setState(() {
+                  _pressed = value;
+                });
+              },
 
-        mouseCursor: SystemMouseCursors.click,
-
-        // 不让InkWell 自己画整块背景
-        hoverColor: Colors.transparent,
-        splashColor: Colors.transparent,
-        highlightColor: Colors.transparent,
-
-        child: Padding(
-          padding: const EdgeInsetsGeometry.symmetric(vertical: 8),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            width: 56,
-            height: 32,
-
-            decoration: BoxDecoration(
-              color: indicatorColor,
+              mouseCursor: SystemMouseCursors.click,
               borderRadius: BorderRadius.circular(20),
-            ),
 
-            child: Icon(
-              widget.icon,
-              color: widget.selected
-                  ? colorScheme.onSecondaryContainer
-                  : colorScheme.onSurfaceVariant,
+              // 悬停和按下背景由 AnimatedContainer 负责。
+              hoverColor: Colors.transparent,
+              highlightColor: Colors.transparent,
+              splashColor: colorScheme.primary.withAlpha(30),
+
+              child: Icon(
+                widget.icon,
+                color: widget.selected
+                    ? colorScheme.onSecondaryContainer
+                    : colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
         ),
