@@ -4,11 +4,13 @@ class NaviRailBottomState extends StatefulWidget {
   const NaviRailBottomState({
     super.key,
     required this.icon,
+    required this.tooltip,
     required this.selected,
     required this.onTap,
   });
 
   final IconData icon; // 图标
+  final String tooltip; // 提示文字
   final bool selected; // 是否被选中
   final VoidCallback onTap; // 点击事件
 
@@ -36,47 +38,50 @@ class _NaviRailBottomState extends State<NaviRailBottomState> {
       indicatorColor = Colors.transparent; // 普通状态
     }
 
-    return InkWell(
-      onTap: widget.onTap,
+    return Tooltip(
+      message: widget.tooltip,
+      child: InkWell(
+        onTap: widget.onTap,
 
-      // 鼠标进入/离开
-      onHover: (value) {
-        setState(() {
-          _hovered = value;
-        });
-      },
+        // 鼠标进入/离开
+        onHover: (value) {
+          setState(() {
+            _hovered = value;
+          });
+        },
 
-      // 鼠标按下/松开
-      onHighlightChanged: (value) {
-        setState(() {
-          _pressed = value;
-        });
-      },
+        // 鼠标按下/松开
+        onHighlightChanged: (value) {
+          setState(() {
+            _pressed = value;
+          });
+        },
 
-      mouseCursor: SystemMouseCursors.click,
+        mouseCursor: SystemMouseCursors.click,
 
-      // 不让InkWell 自己画整块背景
-      hoverColor: Colors.transparent,
-      splashColor: Colors.transparent,
-      highlightColor: Colors.transparent,
+        // 不让InkWell 自己画整块背景
+        hoverColor: Colors.transparent,
+        splashColor: Colors.transparent,
+        highlightColor: Colors.transparent,
 
-      child: Padding(
-        padding: const EdgeInsetsGeometry.symmetric(vertical: 8),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          width: 56,
-          height: 32,
+        child: Padding(
+          padding: const EdgeInsetsGeometry.symmetric(vertical: 8),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            width: 56,
+            height: 32,
 
-          decoration: BoxDecoration(
-            color: indicatorColor,
-            borderRadius: BorderRadius.circular(20),
-          ),
+            decoration: BoxDecoration(
+              color: indicatorColor,
+              borderRadius: BorderRadius.circular(20),
+            ),
 
-          child: Icon(
-            widget.icon,
-            color: widget.selected
-                ? colorScheme.onSecondaryContainer
-                : colorScheme.onSurfaceVariant,
+            child: Icon(
+              widget.icon,
+              color: widget.selected
+                  ? colorScheme.onSecondaryContainer
+                  : colorScheme.onSurfaceVariant,
+            ),
           ),
         ),
       ),

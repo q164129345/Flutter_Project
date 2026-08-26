@@ -72,6 +72,7 @@ class _MainPageState extends State<MainPage> {
 
             trailing: NaviRailBottomState(
               icon: Icons.settings,
+              tooltip: '设置',
               selected: _selectedIndex == 3,
               onTap: () {
                 setState(() {
