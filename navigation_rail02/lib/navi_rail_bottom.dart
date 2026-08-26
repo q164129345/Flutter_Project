@@ -43,8 +43,7 @@ class _NaviRailBottomState extends State<NaviRailBottomState> {
       child: Padding(
         // Padding 位于 InkWell 外面，避免扩大水波纹区域。
         padding: const EdgeInsets.symmetric(vertical: 8),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150), // 设置背景状态切换的动画时长
+        child: Container(
           width: 56, // 设置指示器宽度
           height: 32, // 设置指示器高度
           clipBehavior: Clip.antiAlias, // 按圆角裁剪水波纹，防止波纹超出指示器
