@@ -51,6 +51,10 @@ class _NaviRailBottomState extends State<NaviRailBottomState> {
             color: indicatorColor, // 根据选中、按下或悬停状态显示背景色
             borderRadius: BorderRadius.circular(20), // 设置胶囊形圆角
           ),
+          // 为什么这里需要套一层Material()? 因为InkWell需要被一个Material父类套住。然后，Container并不是一个Material组件
+          // 比如Scafolld是一个Material组件。
+          // Note: 其实InkWell发现上一层没办法提供Material表面时，会一层一层往上找，如果能找到的话，水纹效果就正常显示。
+          // 所以，最保险就是在InkWell外面套一层Material()，这样就不需要依赖父类是否能提供Material表面。
           child: Material(
             color: Colors.transparent, // 透明
             child: InkWell(
