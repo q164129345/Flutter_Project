@@ -243,16 +243,99 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
                         ),
                       ),
 
-                    const SizedBox(width: 8,),
+                      const SizedBox(width: 8,),
 
-                    // 刷新串口
-                    IconButton.filledTonal(
-                      tooltip: '刷新串口',
-                      onPressed: _isConnected ? null : 
-                      icon: icon
-                    )
+                      // 刷新串口
+                      IconButton.filledTonal(
+                        tooltip: '刷新串口',
+                        onPressed: _isConnected ? null : _refreshPorts,
+                        icon: const Icon(Icons.refresh),
+                      ),
 
+                      const SizedBox(width: 16),
 
+                      SizedBox(
+                        width: 60,
+                        child: InputDecorator(
+                          decoration: const InputDecoration(labelText: '波特率', border: OutlineInputBorder()),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<int>(
+                              value: _selectedBaudRate,
+                              isExpanded: true,
+                              items: _baudRates.map((baudRate) {
+                                return DropdownMenuItem(
+                                  value: baudRate,
+                                  child: Text('$baudRate'),
+                                );
+                              }).toList(),
+                              onChanged: _isConnected ? null : (value) {
+                                                                if (value == null) {
+                                                                  return;
+                                                                }
+
+                                                                setState(() {
+                                                                  _selectedBaudRate = value;
+                                                                });
+                                                              },
+                            )
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(width: 16),
+                      
+                      // 连接 / 断开
+                      FilledButton.icon(
+                        onPressed: _selectedPort == null ? null : _toggleConnection, 
+                        icon: Icon(
+                          _isConnected ? Icons.link_off : Icons.link,
+                        ),
+                        label: Text(_isConnected ? '断开' : '连接'
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // 发送区域
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _sendController,
+                          enabled: _isConnected,
+                          decoration: const InputDecoration(
+                            labelText: '发送数据',
+                            hintText: '例如：Hello,world',
+                            border: OutlineInputBorder(),
+                          ),
+                          onSubmitted: (_) {
+                            _sendData();
+                          },
+                        ),
+                      ),
+
+                      const SizedBox(width: 12),
+
+                      FilledButton.icon(
+                        onPressed: _isConnected ? _sendData : null,
+                        icon: const Icon(Icons.send), 
+                        label: const Text('发送'),
+                      ),
+                    ],
+                  ),
+
+                  // 状态
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.circle,
+                        size:10,
+                        color: _isConnected ? Colors.green : Colors.grey,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(_status),
                     ],
                   )
                 ],
