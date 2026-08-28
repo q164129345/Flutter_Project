@@ -238,9 +238,17 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
                         decoration: const InputDecoration(
                           labelText: '串口',
                           border: OutlineInputBorder(),
+
+                          // 控制InputDecorator内部空间
+                          contentPadding: EdgeInsets.symmetric(horizontal: 20,vertical: 8),
+
                         ),
                         child: DropdownButtonHideUnderline(
                           child: DropdownButton<String>(
+                              value: _selectedPort, // 当前选中的串口
+                              isExpanded: true,     // 占满InputDecorator的宽度
+                              isDense: true,        // 减少DropdownButton自身高度
+                              menuMaxHeight: 300,   // 限制弹出的下拉菜单高度
                               items: _ports.map((port) {
                                 return DropdownMenuItem(value: port, child: Text(port),);
                               }).toList(), 
@@ -264,13 +272,14 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
                       const SizedBox(width: 16),
 
                       SizedBox(
-                        width: 60,
+                        width: 120,
                         child: InputDecorator(
                           decoration: const InputDecoration(labelText: '波特率', border: OutlineInputBorder()),
                           child: DropdownButtonHideUnderline(
                             child: DropdownButton<int>(
                               value: _selectedBaudRate,
-                              isExpanded: true,
+                              isExpanded: true, // 占满InputDecorator的宽度
+                              isDense: true,    // 减少DropdownButton自身高度
                               items: _baudRates.map((baudRate) {
                                 return DropdownMenuItem(
                                   value: baudRate,
