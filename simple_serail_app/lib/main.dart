@@ -347,6 +347,8 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
                     ],
                   ),
 
+                  const SizedBox(height: 15),
+
                   // 状态
                   Row(
                     children: [
@@ -355,7 +357,7 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
                         size:10,
                         color: _isConnected ? Colors.green : Colors.grey,
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 10),
                       Text(_status),
                     ],
                   )
