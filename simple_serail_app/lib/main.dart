@@ -221,7 +221,7 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('简单的串口助手'), centerTitle: true),
+      appBar: AppBar(title: const Text('简单的串口助手'), centerTitle: true,backgroundColor: Colors.blueAccent,),
       body: Center(
         child: SizedBox(
           width: 760,
