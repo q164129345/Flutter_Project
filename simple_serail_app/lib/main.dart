@@ -55,8 +55,14 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
   void _disconnect() {
     try {
       _port?.close();
-      _port?.dispose();
-    }catch(_) {}
+
+      // Windows下 flutter_Libserialport的dispose()
+      // 当前存在可能导致程序崩溃的问题。
+      // 暂时不要调用
+      //_port?.dispose();
+    }catch(e) {
+      debugPrint('关闭串口失败：$e');
+    }
 
     setState(() {
       _port = null;
@@ -93,6 +99,9 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
       final config = SerialPortConfig();
 
       try {
+        // 设置用户选择的波特率
+        config.baudRate = _selectedBaudRate;
+
         // 8N1
         config.bits = 8;
         config.stopBits = 1;
