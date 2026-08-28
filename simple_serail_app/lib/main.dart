@@ -88,7 +88,7 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
 
       if (!suceess) {
         setState(() {
-          _status = '打开串口失败:${SerialPort.lastError}';
+          _status = '打开串口失败,串口可能被占用';
         });
 
         port.dispose();
@@ -202,9 +202,12 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
 
     try {
       _port?.close();
-      _port?.dispose();
+      // Windows 暂时不要调用
+      //_port?.dispose();
 
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('关闭串口失败：$e');
+    }
 
     super.dispose();
   }
@@ -314,7 +317,7 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
                     ],
                   ),
 
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 30),
 
                   // 发送区域
                   Row(
@@ -352,7 +355,7 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
                         size:10,
                         color: _isConnected ? Colors.green : Colors.grey,
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 12),
                       Text(_status),
                     ],
                   )
