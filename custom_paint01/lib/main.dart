@@ -30,9 +30,13 @@ class MainApp extends StatelessWidget {
 class LinePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.blue
-      ..strokeWidth = 3;
+    final paint = Paint();
+    paint.color = Colors.blue;
+    paint.strokeWidth = 3;
+    // 相当于
+    // final paint = Paint()
+    //   ..color = Colors.blue
+    //   ..strokeWidth = 3;
 
     canvas.drawLine(const Offset(20, 100), const Offset(450, 100), paint);
   }
