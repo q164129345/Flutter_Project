@@ -238,26 +238,27 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
                     // 串口选择
                       Expanded(
                         child: InputDecorator(
-                        decoration: const InputDecoration(
-                          labelText: '串口',
-                          border: OutlineInputBorder(),
+                          decoration: const InputDecoration(
+                            labelText: '串口',
+                            border: OutlineInputBorder(),
 
-                          // 控制InputDecorator内部空间
-                          contentPadding: EdgeInsets.symmetric(horizontal: 20,vertical: 8),
+                            // 控制InputDecorator内部空间
+                            contentPadding: EdgeInsets.symmetric(horizontal: 20,vertical: 8),
 
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                              value: _selectedPort, // 当前选中的串口
-                              isExpanded: true,     // 占满InputDecorator的宽度
-                              isDense: true,        // 减少DropdownButton自身高度
-                              menuMaxHeight: 300,   // 限制弹出的下拉菜单高度
-                              items: _ports.map((port) {
-                                return DropdownMenuItem(value: port, child: Text(port),);
-                              }).toList(), 
-                              onChanged:  _isConnected ? null :(value) { setState(() {
-                                  _selectedPort = value;
-                                });}
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                                value: _selectedPort, // 当前选中的串口
+                                isExpanded: true,     // 占满InputDecorator的宽度
+                                isDense: true,        // 减少DropdownButton自身高度
+                                menuMaxHeight: 300,   // 限制弹出的下拉菜单高度
+                                items: _ports.map((port) {
+                                  return DropdownMenuItem(value: port, child: Text(port),);
+                                }).toList(), 
+                                onChanged:  _isConnected ? null :(value) { setState(() {
+                                    _selectedPort = value;
+                                  });
+                                }
                             ),
                           ),
                         ),
