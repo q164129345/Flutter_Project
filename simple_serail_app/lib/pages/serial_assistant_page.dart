@@ -26,12 +26,11 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
     921600,
   ];
 
-  int _selectedBaudRate = 115200;
+  int _selectedBaudRate = 115200; // 波特率
+ 
+  String _status = '未连接';       // 连接状态
 
-  String _status = '未连接';
-
-  final TextEditingController _sendController =
-      TextEditingController();
+  final TextEditingController _sendController = TextEditingController();
 
   /// 当前是否已经连接串口
   bool get _isConnected => _serialService.isConnected;
