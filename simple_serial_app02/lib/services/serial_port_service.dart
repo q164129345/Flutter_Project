@@ -7,27 +7,27 @@ import 'package:flutter_libserialport/flutter_libserialport.dart';
 
 
 class SerialPortService {
-  /// 串口实例
+  // 串口实例
   SerialPort? _port;
 
-  /// 获取系统当前有效串口
+  // 获取系统当前有效串口
   List<String> getAvailablePorts() {
     return SerialPort.availablePorts; // 通过系统接口枚举已存在串口名称
   }
 
-  /// 读串口的句柄
+  // 读串口的句柄
   SerialPortReader? _reader;
 
-  /// 接收监听
+  // 接收监听
   StreamSubscription<String>? _readerSubscription;
 
-  /// 将接收的字符串消息发给UI
+  // 将接收的字符串消息发给UI
   final StreamController<String> _receivedTextController = StreamController<String>.broadcast();
 
-  /// UI通过这个Stream 获取串口接收的数据
+  // UI通过这个Stream 获取串口接收的数据
   Stream<String> get receviedTextStream => _receivedTextController.stream;
 
-  /// 当前串口是否已经打开
+  // 当前串口是否已经打开
   bool get isConnected => _port?.isOpen ?? false;
 
   /// 打开串口
