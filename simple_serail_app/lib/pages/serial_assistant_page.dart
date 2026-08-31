@@ -62,7 +62,6 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
         _ports = ports;
         _selectedPort = selectedPort;
       });
-
     } catch (e) {
       setState(() {
         _status = '扫描串口失败：$e';
@@ -98,10 +97,7 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
   // =========================
   void _disconnect() {
     _serialService.disconnect();
-
-    setState(() {
-      _status = '未连接';
-    });
+    setState(() => _status = '未连接');
   }
 
   // =========================
@@ -134,16 +130,10 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
     }
 
     try {
-      final count =
-          _serialService.sendText(text);
-
-      setState(() {
-        _status = '已发送 $count 字节';
-      });
+      final count = _serialService.sendText(text);
+      setState(() => _status = '已发送 $count 字节');
     } catch (e) {
-      setState(() {
-        _status = '发送失败：$e';
-      });
+      setState(() => _status = '发送失败：$e');
     }
   }
 
