@@ -10,22 +10,10 @@ class SerialAssistantPage extends StatefulWidget {
       _SerialAssistantPageState();
 }
 
-class _SerialAssistantPageState
-    extends State<SerialAssistantPage> {
-  // =========================
-  // 串口服务
-  // =========================
-
-  final SerialPortService _serialService =
-      SerialPortService();
-
-  // =========================
-  // UI 状态
-  // =========================
-
-  List<String> _ports = [];
-
-  String? _selectedPort;
+class _SerialAssistantPageState extends State<SerialAssistantPage> {
+  final SerialPortService _serialService = SerialPortService(); // 获取串口服务实例
+  List<String> _ports = []; // 
+  String? _selectedPort;    // 当前选择的串口
 
   final List<int> _baudRates = [
     9600,
@@ -46,8 +34,7 @@ class _SerialAssistantPageState
       TextEditingController();
 
   /// 当前是否已经连接串口
-  bool get _isConnected =>
-      _serialService.isConnected;
+  bool get _isConnected => _serialService.isConnected;
 
   @override
   void initState() {
@@ -62,17 +49,16 @@ class _SerialAssistantPageState
   // =========================
   void _refreshPorts() {
     try {
-      final ports =
-          _serialService.getAvailablePorts();
-
+      final ports = _serialService.getAvailablePorts(); // 获取有效的串口列表
       String? selectedPort = _selectedPort;
 
-      // 如果原来的串口已经不存在了
+      // 如果原来的串口号还在的话，就跳过这段代码。
+      // 原来的串口号不在时，赋值列表里的第一个串口。如果没有串口被检查出来，即赋null。
       if (!ports.contains(selectedPort)) {
-        selectedPort =
-            ports.isNotEmpty ? ports.first : null;
+        selectedPort = ports.isNotEmpty ? ports.first : null;
       }
 
+      // 通知Flutter框架，变量发生了变化
       setState(() {
         _ports = ports;
         _selectedPort = selectedPort;
