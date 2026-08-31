@@ -7,8 +7,7 @@ class SerialAssistantPage extends StatefulWidget {
   const SerialAssistantPage({super.key});
 
   @override
-  State<SerialAssistantPage> createState() =>
-      _SerialAssistantPageState();
+  State<SerialAssistantPage> createState() => _SerialAssistantPageState();
 }
 
 class _SerialAssistantPageState extends State<SerialAssistantPage> {
@@ -34,7 +33,7 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
 
   // 波特率
   int _selectedBaudRate = 115200;
- 
+
   // 连接状态
   String _status = '未连接';
 
@@ -53,7 +52,6 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
   // 控制接收区域滚动
   final ScrollController _receiveScrollController = ScrollController();
 
-
   // =========================
   // 收到一条串口消息
   // =========================
@@ -64,19 +62,19 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
 
     final now = DateTime.now(); // 当前时间
 
-    final time = 
-      '${now.hour.toString().padLeft(2, '0')}:'
-      '${now.minute.toString().padLeft(2, '0')}:'
-      '${now.second.toString().padLeft(2, '0')}';
+    final time =
+        '${now.hour.toString().padLeft(2, '0')}:'
+        '${now.minute.toString().padLeft(2, '0')}:'
+        '${now.second.toString().padLeft(2, '0')}';
 
     setState(() {
       _receviedMessage.add('$time -> $message');
     });
 
-    WidgetsBinding.instance.addPostFrameCallback((_){
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_receiveScrollController.hasClients) {
         _receiveScrollController.jumpTo(
-          _receiveScrollController.position.maxScrollExtent
+          _receiveScrollController.position.maxScrollExtent,
         );
       }
     });
@@ -98,7 +96,7 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
         setState(() {
           _status = '接收失败：$error';
         });
-      }
+      },
     );
   }
 
@@ -193,6 +191,15 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
   }
 
   // =========================
+  // 清空接收数据
+  // =========================
+  void _clearReceivedData() {
+    setState(() {
+      _receviedMessage.clear();
+    });
+  }
+
+  // =========================
   // 页面销毁
   // =========================
   @override
@@ -269,8 +276,7 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
                                   ? null
                                   : (value) {
                                       setState(() {
-                                        _selectedPort =
-                                            value;
+                                        _selectedPort = value;
                                       });
                                     },
                             ),
@@ -283,9 +289,7 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
                       // 刷新
                       IconButton.filledTonal(
                         tooltip: '刷新串口',
-                        onPressed: _isConnected
-                            ? null
-                            : _refreshPorts,
+                        onPressed: _isConnected ? null : _refreshPorts,
                         icon: const Icon(Icons.refresh),
                       ),
 
@@ -295,11 +299,9 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
                       SizedBox(
                         width: 120,
                         child: InputDecorator(
-                          decoration:
-                              const InputDecoration(
+                          decoration: const InputDecoration(
                             labelText: '波特率',
-                            border:
-                                OutlineInputBorder(),
+                            border: OutlineInputBorder(),
                           ),
                           child: DropdownButtonHideUnderline(
                             child: DropdownButton<int>(
@@ -321,8 +323,7 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
                                       }
 
                                       setState(() {
-                                        _selectedBaudRate =
-                                            value;
+                                        _selectedBaudRate = value;
                                       });
                                     },
                             ),
@@ -337,16 +338,8 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
                         onPressed: _selectedPort == null
                             ? null
                             : _toggleConnection,
-                        icon: Icon(
-                          _isConnected
-                              ? Icons.link_off
-                              : Icons.link,
-                        ),
-                        label: Text(
-                          _isConnected
-                              ? '断开'
-                              : '连接',
-                        ),
+                        icon: Icon(_isConnected ? Icons.link_off : Icons.link),
+                        label: Text(_isConnected ? '断开' : '连接'),
                       ),
                     ],
                   ),
@@ -360,16 +353,12 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
                     children: [
                       Expanded(
                         child: TextField(
-                          controller:
-                              _sendController,
+                          controller: _sendController,
                           enabled: _isConnected,
-                          decoration:
-                              const InputDecoration(
+                          decoration: const InputDecoration(
                             labelText: '发送数据',
-                            hintText:
-                                '例如：Hello,world',
-                            border:
-                                OutlineInputBorder(),
+                            hintText: '例如：Hello,world',
+                            border: OutlineInputBorder(),
                           ),
                           onSubmitted: (_) {
                             _sendData();
@@ -380,13 +369,9 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
                       const SizedBox(width: 12),
 
                       FilledButton.icon(
-                        onPressed: _isConnected
-                            ? _sendData
-                            : null,
-                        icon:
-                            const Icon(Icons.send),
-                        label:
-                            const Text('发送'),
+                        onPressed: _isConnected ? _sendData : null,
+                        icon: const Icon(Icons.send),
+                        label: const Text('发送'),
                       ),
                     ],
                   ),
@@ -401,14 +386,22 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
                       Icon(
                         Icons.circle,
                         size: 10,
-                        color: _isConnected
-                            ? Colors.green
-                            : Colors.grey,
+                        color: _isConnected ? Colors.green : Colors.grey,
                       ),
 
                       const SizedBox(width: 10),
 
                       Text(_status),
+
+                      const Spacer(),
+
+                      OutlinedButton.icon(
+                        onPressed: _receviedMessage.isEmpty
+                            ? null
+                            : _clearReceivedData,
+                        icon: const Icon(Icons.delete_sweep),
+                        label: const Text('清空接收'),
+                      ),
                     ],
                   ),
 
@@ -426,20 +419,28 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
 
                     child: SizedBox(
                       height: 260,
-                      child: _receviedMessage.isEmpty ? const Center(
-                                                          child: Text('暂时没有数据', style: TextStyle(color: Colors.grey),),
-                                                        )
-                                                        : ListView.builder(
-                                                          controller: _receiveScrollController,
-                                                          itemCount: _receviedMessage.length,
-                                                          itemBuilder: (context,index) {
-                                                            return Padding(
-                                                              padding: const EdgeInsets.symmetric(vertical: 2),
-                                                              child:SelectableText(_receviedMessage[index])
-                                                            );
-                                                          }
-                                                        )
-                    )
+                      child: _receviedMessage.isEmpty
+                          ? const Center(
+                              child: Text(
+                                '暂时没有数据',
+                                style: TextStyle(color: Colors.grey),
+                              ),
+                            )
+                          : ListView.builder(
+                              controller: _receiveScrollController,
+                              itemCount: _receviedMessage.length,
+                              itemBuilder: (context, index) {
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 2,
+                                  ),
+                                  child: SelectableText(
+                                    _receviedMessage[index],
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
                   ),
                 ],
               ),
