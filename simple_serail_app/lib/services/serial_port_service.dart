@@ -13,7 +13,7 @@ class SerialPortService {
 
   /// 获取系统当前有效串口
   List<String> getAvailablePorts() {
-    return SerialPort.availablePorts;
+    return SerialPort.availablePorts; // 通过系统接口枚举已存在串口名称
   }
 
   /// 打开串口
@@ -26,7 +26,7 @@ class SerialPortService {
       disconnect();
     }
 
-    final port = SerialPort(portName);
+    final port = SerialPort(portName); // 创建串口对象
 
     try {
       // 打开串口：读 + 写
@@ -134,13 +134,7 @@ class SerialPortService {
       debugPrint('释放串口失败：$e');
     }
   }
-
-  /// 销毁服务
-  void dispose() {
-    disconnect();
-  }
 }
-
 
 
 

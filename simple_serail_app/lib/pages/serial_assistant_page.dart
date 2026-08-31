@@ -161,8 +161,8 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
   void dispose() {
     _sendController.dispose();
 
-    // 页面销毁时释放串口资源
-    _serialService.dispose();
+    // 页面销毁时断开串口并释放相关资源
+    _serialService.disconnect();
 
     super.dispose();
   }
