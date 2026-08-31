@@ -12,7 +12,7 @@ class SerialAssistantPage extends StatefulWidget {
 
 class _SerialAssistantPageState extends State<SerialAssistantPage> {
   final SerialPortService _serialService = SerialPortService(); // 获取串口服务实例
-  List<String> _ports = []; // 
+  List<String> _ports = []; // 扫描出来的串口号列表
   String? _selectedPort;    // 当前选择的串口
 
   final List<int> _baudRates = [
@@ -38,9 +38,7 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
   @override
   void initState() {
     super.initState();
-
-    // 程序启动以后扫描一次串口
-    _refreshPorts();
+    _refreshPorts(); // 程序启动以后扫描一次串口
   }
 
   // =========================
@@ -63,9 +61,7 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
         _selectedPort = selectedPort;
       });
     } catch (e) {
-      setState(() {
-        _status = '扫描串口失败：$e';
-      });
+      setState(() => _status = '扫描串口失败：$e');
     }
   }
 
@@ -74,9 +70,7 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
   // =========================
   void _connect() {
     if (_selectedPort == null) {
-      setState(() {
-        _status = '没有可用串口';
-      });
+      setState(() => _status = '没有可用串口');
 
       return;
     }
