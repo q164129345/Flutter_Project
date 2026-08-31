@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../services/serial_port_service.dart';
@@ -11,9 +12,14 @@ class SerialAssistantPage extends StatefulWidget {
 }
 
 class _SerialAssistantPageState extends State<SerialAssistantPage> {
-  final SerialPortService _serialService = SerialPortService(); // 对象实例化
-  List<String> _ports = []; // 保存当前扫描得到的串口名称
-  String? _selectedPort;    // 当前选择的串口
+  // 对象实例化
+  final SerialPortService _serialService = SerialPortService();
+
+  // 保存当前扫描得到的串口名称
+  List<String> _ports = [];
+
+  // 当前选择的串口
+  String? _selectedPort;
 
   final List<int> _baudRates = [
     9600,
@@ -26,19 +32,74 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
     921600,
   ];
 
-  int _selectedBaudRate = 115200; // 波特率
+  // 波特率
+  int _selectedBaudRate = 115200;
  
-  String _status = '未连接';       // 连接状态
+  // 连接状态
+  String _status = '未连接';
 
-  final TextEditingController _sendController = TextEditingController(); // 保存发送TextField的文本
+  // 保存发送TextField的文本
+  final TextEditingController _sendController = TextEditingController();
 
-  /// 当前是否已经连接串口
+  // 当前是否已经连接串口
   bool get _isConnected => _serialService.isConnected;
+
+  // 保存所有收到的字符串信息
+  final List<String> _receviedMessage = [];
+
+  // 监听 serialPortService的接收Stream
+  StreamSubscription<String>? _receiveSubscription;
+
+  // 控制接收区域滚动
+  final ScrollController _receiveScrollController = ScrollController();
+
+
+  // =========================
+  // 收到一条串口消息
+  // =========================
+  void _onReceviedText(String message) {
+    if (!mounted) {
+      return;
+    }
+
+    final now = DateTime.now(); // 当前时间
+
+    final time = 
+      '${now.hour.toString().padLeft(2, '0')}:'
+      '${now.minute.toString().padLeft(2, '0')}:'
+      '${now.second.toString().padLeft(2, '0')}';
+
+    setState(() {
+      _receviedMessage.add('$time $message');
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_){
+      if (_receiveScrollController.hasClients) {
+        _receiveScrollController.jumpTo(
+          _receiveScrollController.position.maxScrollExtent
+        );
+      }
+    });
+  }
 
   @override
   void initState() {
     super.initState();
     _refreshPorts(); // 程序启动以后扫描一次串口
+
+    // 监听 SerialPortService 收到的字符串
+    _receiveSubscription = _serialService.receviedTextStream.listen(
+      _onReceviedText,
+      onError: (error) {
+        if (!mounted) {
+          return;
+        }
+
+        setState(() {
+          _status = '接收失败：$error';
+        });
+      }
+    );
   }
 
   // =========================
@@ -138,8 +199,14 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
   void dispose() {
     _sendController.dispose();
 
-    // 页面销毁时断开串口并释放相关资源
-    _serialService.disconnect();
+    // 取消接收Stream的监听
+    _receiveSubscription?.cancel();
+
+    // 销毁接收区域滚动控制器
+    _receiveScrollController.dispose();
+
+    // 关闭串口并销毁 Service
+    _serialService.dispose();
 
     super.dispose();
   }
@@ -343,6 +410,36 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
 
                       Text(_status),
                     ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // =========================
+                  // 接收区域
+                  // =========================
+                  InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: '接收数据',
+                      border: OutlineInputBorder(),
+                      contentPadding: EdgeInsets.all(12),
+                    ),
+
+                    child: SizedBox(
+                      height: 260,
+                      child: _receviedMessage.isEmpty ? const Center(
+                                                          child: Text('暂时没有数据', style: TextStyle(color: Colors.grey),),
+                                                        )
+                                                        : ListView.builder(
+                                                          controller: _receiveScrollController,
+                                                          itemCount: _receviedMessage.length,
+                                                          itemBuilder: (context,index) {
+                                                            return Padding(
+                                                              padding: const EdgeInsets.symmetric(vertical: 2),
+                                                              child:SelectableText(_receviedMessage[index])
+                                                            );
+                                                          }
+                                                        )
+                    )
                   ),
                 ],
               ),
