@@ -118,9 +118,11 @@ class SerialPortService {
       // 监控每一条完整的信息
       .listen(
         (message) {
-        _receivedTextController.add(message);
+          //debugPrint('串口收到：$message');
+          _receivedTextController.add(message);
         },
         onError: (error) {
+          //debugPrint('串口接收错误：$error');
           _receivedTextController.addError(error);
         },
       );
