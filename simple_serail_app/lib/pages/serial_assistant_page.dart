@@ -87,15 +87,9 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
         portName: _selectedPort!,
         baudRate: _selectedBaudRate,
       );
-
-      setState(() {
-        _status =
-            '已连接 $_selectedPort $_selectedBaudRate baud';
-      });
+      setState(() => _status = '已连接 $_selectedPort $_selectedBaudRate baud');
     } catch (e) {
-      setState(() {
-        _status = '连接失败：$e';
-      });
+      setState(() => _status = '连接失败：$e');
     }
   }
 
