@@ -5,7 +5,6 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_libserialport/flutter_libserialport.dart';
 
-
 class SerialPortService {
   // 串口实例
   SerialPort? _port;
@@ -19,22 +18,26 @@ class SerialPortService {
   SerialPortReader? _reader;
 
   // 接收监听
-  StreamSubscription<String>? _readerSubscription;
+  StreamSubscription<Uint8List>? _readerSubscription;
 
-  // 将接收的字符串消息发给UI
-  final StreamController<String> _receivedTextController = StreamController<String>.broadcast();
+  // 将串口接收到的原始字节发给 UI
+  final StreamController<Uint8List> _receivedBytesController =
+      StreamController<Uint8List>.broadcast();
 
-  // UI通过这个Stream 获取串口接收的数据
-  Stream<String> get receviedTextStream => _receivedTextController.stream;
+  // HEX 模式直接使用原始字节
+  Stream<Uint8List> get receivedBytesStream => _receivedBytesController.stream;
+
+  // 字符串模式将原始字节按 UTF-8 解码，并按换行符拆分消息
+  Stream<String> get receivedTextStream => receivedBytesStream
+      .cast<List<int>>()
+      .transform(const Utf8Decoder(allowMalformed: true))
+      .transform(const LineSplitter());
 
   // 当前串口是否已经打开
   bool get isConnected => _port?.isOpen ?? false;
 
   /// 打开串口
-  void connect({
-    required String portName,
-    required int baudRate,
-  }) {
+  void connect({required String portName, required int baudRate}) {
     // 如果已经连接，先断开
     if (isConnected) {
       disconnect();
@@ -49,9 +52,7 @@ class SerialPortService {
       if (!success) {
         _releasePortObject(port);
 
-        throw Exception(
-          '打开串口失败，串口可能被占用',
-        );
+        throw Exception('打开串口失败，串口可能被占用');
       }
 
       // 创建串口配置
@@ -67,9 +68,7 @@ class SerialPortService {
         config.parity = SerialPortParity.none;
 
         // 不使用流控
-        config.setFlowControl(
-          SerialPortFlowControl.none,
-        );
+        config.setFlowControl(SerialPortFlowControl.none);
 
         // 应用配置
         port.config = config;
@@ -99,51 +98,36 @@ class SerialPortService {
   void _startReading() {
     final port = _port;
 
-    if (port == null) return;
+    if (port == null) {
+      return;
+    }
 
     // 创建异步串口读取器
     _reader = SerialPortReader(port);
 
-    _readerSubscription = _reader!
-      .stream
-      .cast<List<int>>()
-      // Uint8List
-      //     ↓
-      // UTF-8 String
-      .transform(const Utf8Decoder(allowMalformed: true))
-      // String 数据流
-      //     ↓
-      // 按 \n / \r\n分割成一条条消息
-      .transform(const LineSplitter())
-      // 监控每一条完整的信息
-      .listen(
-        (message) {
-          //debugPrint('串口收到：$message');
-          _receivedTextController.add(message);
-        },
-        onError: (error) {
-          //debugPrint('串口接收错误：$error');
-          _receivedTextController.addError(error);
-        },
-      );
+    _readerSubscription = _reader!.stream.listen(
+      (data) {
+        // 复制数据，避免底层读缓冲区被重复使用
+        _receivedBytesController.add(Uint8List.fromList(data));
+      },
+      onError: (error) {
+        _receivedBytesController.addError(error);
+      },
+    );
   }
 
-  /// 发送字符串
-  int sendText(String text) {
+  /// 发送原始字节
+  int sendBytes(List<int> bytes) {
     if (!isConnected || _port == null) {
       throw StateError('串口没有连接');
     }
 
-    // String
-    //    ↓
-    // UTF-8
-    //    ↓
-    // Uint8List
-    final data = Uint8List.fromList(
-      utf8.encode(text),
-    );
+    return _port!.write(Uint8List.fromList(bytes));
+  }
 
-    return _port!.write(data);
+  /// 发送字符串
+  int sendText(String text) {
+    return sendBytes(utf8.encode(text));
   }
 
   /// 停止串口接收
@@ -202,14 +186,6 @@ class SerialPortService {
   /// 销毁整个Servie
   void dispose() {
     disconnect();
-    _receivedTextController.close();
+    _receivedBytesController.close();
   }
-
 }
-
-
-
-
-
-
-

@@ -1,7 +1,11 @@
 import 'dart:async';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../services/serial_port_service.dart';
+
+enum DataMode { text, hex }
 
 class SerialAssistantPage extends StatefulWidget {
   const SerialAssistantPage({super.key});
@@ -40,6 +44,9 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
   // 保存发送TextField的文本
   final TextEditingController _sendController = TextEditingController();
 
+  // 当前发送和接收数据的显示模式
+  DataMode _dataMode = DataMode.text;
+
   // 当前是否已经连接串口
   bool get _isConnected => _serialService.isConnected;
 
@@ -47,7 +54,7 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
   final List<String> _receviedMessage = [];
 
   // 监听 serialPortService的接收Stream
-  StreamSubscription<String>? _receiveSubscription;
+  StreamSubscription<dynamic>? _receiveSubscription;
 
   // 控制接收区域滚动
   final ScrollController _receiveScrollController = ScrollController();
@@ -80,24 +87,51 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
     });
   }
 
+  // =========================
+  // 将串口字节格式化为 HEX 文本
+  // =========================
+  String _bytesToHex(Uint8List bytes) {
+    return bytes
+        .map((byte) => byte.toRadixString(16).padLeft(2, '0').toUpperCase())
+        .join(' ');
+  }
+
+  // =========================
+  // 根据当前模式监听串口数据
+  // =========================
+  void _listenForIncomingData() {
+    _receiveSubscription?.cancel();
+
+    if (_dataMode == DataMode.hex) {
+      _receiveSubscription = _serialService.receivedBytesStream.listen((bytes) {
+        if (bytes.isNotEmpty) {
+          _onReceviedText(_bytesToHex(bytes));
+        }
+      }, onError: _onReceiveError);
+    } else {
+      _receiveSubscription = _serialService.receivedTextStream.listen(
+        _onReceviedText,
+        onError: _onReceiveError,
+      );
+    }
+  }
+
+  void _onReceiveError(Object error) {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _status = '接收失败：$error';
+    });
+  }
+
   @override
   void initState() {
     super.initState();
     _refreshPorts(); // 程序启动以后扫描一次串口
 
-    // 监听 SerialPortService 收到的字符串
-    _receiveSubscription = _serialService.receviedTextStream.listen(
-      _onReceviedText,
-      onError: (error) {
-        if (!mounted) {
-          return;
-        }
-
-        setState(() {
-          _status = '接收失败：$error';
-        });
-      },
-    );
+    _listenForIncomingData();
   }
 
   // =========================
@@ -165,6 +199,36 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
   }
 
   // =========================
+  // 将 HEX 输入转换为字节
+  // 支持 AA BB CC、AABBCC、0xAA 0xBB 等格式
+  // =========================
+  Uint8List _parseHex(String input) {
+    final cleaned = input
+        .replaceAll(RegExp(r'0[xX]'), '')
+        .replaceAll(RegExp(r'[\s,]+'), '');
+
+    if (cleaned.isEmpty) {
+      throw const FormatException('请输入 HEX 数据');
+    }
+
+    if (cleaned.length.isOdd) {
+      throw const FormatException('HEX 字符数量必须是偶数');
+    }
+
+    if (!RegExp(r'^[0-9a-fA-F]+$').hasMatch(cleaned)) {
+      throw const FormatException('HEX 数据中包含非法字符');
+    }
+
+    final bytes = <int>[];
+
+    for (var index = 0; index < cleaned.length; index += 2) {
+      bytes.add(int.parse(cleaned.substring(index, index + 2), radix: 16));
+    }
+
+    return Uint8List.fromList(bytes);
+  }
+
+  // =========================
   // 发送数据
   // =========================
   void _sendData() {
@@ -183,8 +247,13 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
     }
 
     try {
-      final count = _serialService.sendText(text);
+      final count = _dataMode == DataMode.hex
+          ? _serialService.sendBytes(_parseHex(text))
+          : _serialService.sendText(text);
+
       setState(() => _status = '已发送 $count 字节');
+    } on FormatException catch (e) {
+      setState(() => _status = 'HEX 格式错误：${e.message}');
     } catch (e) {
       setState(() => _status = '发送失败：$e');
     }
@@ -347,6 +416,46 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
                   const SizedBox(height: 30),
 
                   // =========================
+                  // 数据模式
+                  // =========================
+                  Row(
+                    children: [
+                      const Text('数据模式：'),
+                      const SizedBox(width: 12),
+                      SegmentedButton<DataMode>(
+                        segments: const [
+                          ButtonSegment<DataMode>(
+                            value: DataMode.text,
+                            label: Text('字符串'),
+                            icon: Icon(Icons.text_fields),
+                          ),
+                          ButtonSegment<DataMode>(
+                            value: DataMode.hex,
+                            label: Text('HEX'),
+                            icon: Icon(Icons.numbers),
+                          ),
+                        ],
+                        selected: <DataMode>{_dataMode},
+                        showSelectedIcon: false,
+                        onSelectionChanged: (selection) {
+                          final mode = selection.first;
+
+                          if (mode == _dataMode) {
+                            return;
+                          }
+
+                          setState(() {
+                            _dataMode = mode;
+                          });
+                          _listenForIncomingData();
+                        },
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // =========================
                   // 发送数据
                   // =========================
                   Row(
@@ -355,10 +464,14 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
                         child: TextField(
                           controller: _sendController,
                           enabled: _isConnected,
-                          decoration: const InputDecoration(
-                            labelText: '发送数据',
-                            hintText: '例如：Hello,world',
-                            border: OutlineInputBorder(),
+                          decoration: InputDecoration(
+                            labelText: _dataMode == DataMode.hex
+                                ? '发送 HEX 数据'
+                                : '发送字符串',
+                            hintText: _dataMode == DataMode.hex
+                                ? '例如：01 A0 FF'
+                                : '例如：Hello, world',
+                            border: const OutlineInputBorder(),
                           ),
                           onSubmitted: (_) {
                             _sendData();
@@ -411,10 +524,12 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
                   // 接收区域
                   // =========================
                   InputDecorator(
-                    decoration: const InputDecoration(
-                      labelText: '接收数据',
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.all(12),
+                    decoration: InputDecoration(
+                      labelText: _dataMode == DataMode.hex
+                          ? '接收数据（HEX）'
+                          : '接收数据（字符串）',
+                      border: const OutlineInputBorder(),
+                      contentPadding: const EdgeInsets.all(12),
                     ),
 
                     child: SizedBox(
