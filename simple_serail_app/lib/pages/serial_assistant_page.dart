@@ -11,8 +11,8 @@ class SerialAssistantPage extends StatefulWidget {
 }
 
 class _SerialAssistantPageState extends State<SerialAssistantPage> {
-  final SerialPortService _serialService = SerialPortService(); // 获取串口服务实例
-  List<String> _ports = []; // 扫描出来的串口号列表
+  final SerialPortService _serialService = SerialPortService(); // 对象实例化
+  List<String> _ports = []; // 保存当前扫描得到的串口名称
   String? _selectedPort;    // 当前选择的串口
 
   final List<int> _baudRates = [
@@ -30,7 +30,7 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
  
   String _status = '未连接';       // 连接状态
 
-  final TextEditingController _sendController = TextEditingController();
+  final TextEditingController _sendController = TextEditingController(); // 保存发送TextField的文本
 
   /// 当前是否已经连接串口
   bool get _isConnected => _serialService.isConnected;
