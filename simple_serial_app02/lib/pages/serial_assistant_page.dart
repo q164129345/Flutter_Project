@@ -70,7 +70,7 @@ class _SerialAssistantPageState extends State<SerialAssistantPage> {
       '${now.second.toString().padLeft(2, '0')}';
 
     setState(() {
-      _receviedMessage.add('$time $message');
+      _receviedMessage.add('$time -> $message');
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_){
