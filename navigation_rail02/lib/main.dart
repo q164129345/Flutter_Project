@@ -40,6 +40,8 @@ class _MainPageState extends State<MainPage> {
         children: [
           // 左侧导航栏
           NavigationRail(
+            backgroundColor: const Color.fromARGB(248, 253, 252, 237),
+
             // SYS不是destination,
             // 所以选中SYS时，让NavigationRail没有选中项
             selectedIndex: _selectedIndex < 3 ? _selectedIndex : null,
