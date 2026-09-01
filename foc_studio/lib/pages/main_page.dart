@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'setting_page.dart';
 import '../widgets/navi_rail_bottom.dart';
-
 
 class MainPage extends StatefulWidget {
   const MainPage({super.key});
@@ -18,7 +18,7 @@ class _MainPageState extends State<MainPage> {
     Center(child: Text('当前是MOT', style: TextStyle(fontSize: 30))),
     Center(child: Text('当前是POS', style: TextStyle(fontSize: 30))),
     Center(child: Text('当前是CHT', style: TextStyle(fontSize: 30))),
-    Center(child: Text('当前是SYS', style: TextStyle(fontSize: 30))),
+    SettingPage(),
   ];
 
   @override
