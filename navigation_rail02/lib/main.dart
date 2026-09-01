@@ -40,7 +40,7 @@ class _MainPageState extends State<MainPage> {
         children: [
           // 左侧导航栏
           NavigationRail(
-            backgroundColor: const Color.fromARGB(248, 253, 252, 237),
+            backgroundColor: const Color.fromARGB(248, 252, 251, 238),
 
             // SYS不是destination,
             // 所以选中SYS时，让NavigationRail没有选中项
