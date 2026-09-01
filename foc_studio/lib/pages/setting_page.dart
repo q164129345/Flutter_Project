@@ -159,7 +159,7 @@ class _SettingPageState extends State<SettingPage> {
     // ColoredBox（背景） -> Align（位置） -> Padding（外边距）
     // -> ConstrainedBox（最大宽度） -> Column（垂直排列）。
     return ColoredBox(
-      color: colorScheme.surface,
+      color: Color.fromARGB(248, 255, 254, 245),
       child: Align(
         // 把整个设置区域放在页面左上角。
         alignment: Alignment.topLeft,
