@@ -99,8 +99,6 @@ class _MainPageState extends State<MainPage> {
               ),
             ],
 
-            trailingAtBottom: true,
-
             trailing: NaviRailBottomState(
               icon: Icons.settings,
               tooltip: '设置',
