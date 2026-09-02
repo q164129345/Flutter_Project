@@ -3,15 +3,20 @@ import '../services/serial_port_service.dart';
 import 'package:flutter/material.dart';
 
 class SettingPage extends StatefulWidget {
-  const SettingPage({super.key});
+  // required 表示创建 SettingPage 时必须传入 serialService。
+  const SettingPage({super.key, required this.serialService});
+
+  // final 表示设置页只能使用传入的 Service，不能在运行中把它替换掉。
+  final SerialPortService serialService;
 
   @override
   State<SettingPage> createState() => _SettingPageState();
 }
 
 class _SettingPageState extends State<SettingPage> {
-  // 串口服务实例
-  final SerialPortService _serialService = SerialPortService();
+  // 设置页与导航栏共用由 MainPage 持有的串口服务。
+  // StatefulWidget 的 State 可以通过 widget 属性读取外层 Widget 的参数。
+  SerialPortService get _serialService => widget.serialService;
 
   // 下划线开头表示 Dart 库内私有成员；外部文件不能直接访问。
   // List<String> 表示列表中只允许存放字符串。
@@ -32,6 +37,19 @@ class _SettingPageState extends State<SettingPage> {
   @override
   void initState() {
     super.initState();
+
+    // 用户从其他页面重新进入设置页时，根据 Service 恢复当前连接信息。
+    _selectedPort = _serialService.connectedPortName;
+
+    // switch 会覆盖枚举中的三种状态，所以无需再写 else。
+    _status = switch (_serialService.connectionStatus) {
+      SerialPortConnectionStatus.connected =>
+        '已连接 ${_serialService.connectedPortName} '
+            '${_serialService.connectedBaudRate} baud',
+      SerialPortConnectionStatus.failed =>
+        '连接失败：${_serialService.lastConnectionError ?? '未知错误'}',
+      SerialPortConnectionStatus.disconnected => '未连接',
+    };
 
     // initState() 在 State 创建后只执行一次，适合做首次扫描和建立监听。
     // 不要把这些操作放进 build()，因为 build() 可能被调用很多次。
@@ -135,17 +153,6 @@ class _SettingPageState extends State<SettingPage> {
       _status.startsWith('没有') ||
       _status.contains('失败') ||
       _status.contains('错误');
-
-  @override
-  void dispose() {
-    // 页面从组件树中永久移除时，释放串口、数据监听和 StreamController。
-    // 易错点：自己创建的连接、监听器、Controller 通常都要在 dispose 中释放，
-    // 否则可能出现端口一直被占用或内存泄漏。
-    _serialService.dispose();
-
-    // 最后调用父类的 dispose，完成 Flutter State 自身的清理。
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {

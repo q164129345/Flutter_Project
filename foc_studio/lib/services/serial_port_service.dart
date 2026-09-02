@@ -5,12 +5,44 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_libserialport/flutter_libserialport.dart';
 
+/// enum（枚举）用于列出有限且固定的几种状态。
+/// 相比用“已连接”这类字符串判断，枚举不容易拼错，也方便 switch 逐一处理。
+enum SerialPortConnectionStatus {
+  disconnected, // 尚未连接，或者用户主动断开。
+  connected, // 串口已经成功打开并完成配置。
+  failed, // 最近一次连接尝试失败。
+}
+
 /// 串口服务层：只负责“找串口、连接、收发字节、释放资源”。
 ///
 /// 将串口逻辑从 Widget 中拆出来，可以避免 UI 代码同时处理大量底层细节。
-class SerialPortService {
+// extends ChangeNotifier 表示这个对象可以在状态改变时通知界面刷新。
+// NavigationRail 中的 ListenableBuilder 正在监听这个 Service。
+class SerialPortService extends ChangeNotifier {
   // “?”表示该变量可以为 null；未连接时就没有 SerialPort 对象。
   SerialPort? _port;
+
+  // 保存当前连接状态。程序刚启动时还没有连接，所以初始值为 disconnected。
+  // 下划线开头表示私有字段，只有本文件中的代码可以直接修改它。
+  SerialPortConnectionStatus _connectionStatus =
+      SerialPortConnectionStatus.disconnected;
+
+  // 保存最近一次连接失败抛出的异常，导航栏可以把具体原因放进 Tooltip。
+  // Object? 中的“?”表示允许为 null；没有错误时它就是 null。
+  Object? _lastConnectionError;
+
+  // 连接成功后记录实际使用的串口名和波特率，例如 COM3、460800。
+  // 断开或连接失败后，这两个字段会重新变成 null。
+  String? _connectedPortName;
+  int? _connectedBaudRate;
+
+  // getter 只允许外部读取状态，不允许外部直接修改上面的私有字段。
+  // “=>”是只有一个表达式时的简写，相当于 { return _connectionStatus; }。
+  // int?声明的函数返回值类型是可空的 int，表示可能返回 null。
+  SerialPortConnectionStatus get connectionStatus => _connectionStatus;
+  Object? get lastConnectionError => _lastConnectionError;
+  String? get connectedPortName => _connectedPortName;
+  int? get connectedBaudRate => _connectedBaudRate;
 
   /// 每次调用都重新读取系统串口列表。
   /// USB 串口拔插后列表可能变化，所以 UI 需要提供“刷新”按钮。
@@ -42,13 +74,40 @@ class SerialPortService {
       .transform(const Utf8Decoder(allowMalformed: true))
       .transform(const LineSplitter());
 
+  // 必须同时满足两个条件才算真正连接：
+  // 1. 业务状态已经变成 connected；2. 系统底层的串口仍然处于打开状态。
   // “?.”是空安全访问，“?? false”表示 _port 为 null 时返回 false。
-  bool get isConnected => _port?.isOpen ?? false;
+  bool get isConnected =>
+      _connectionStatus == SerialPortConnectionStatus.connected &&
+      (_port?.isOpen ?? false);
+
+  /// 统一修改连接状态并通知界面。
+  ///
+  /// error 放在花括号中，所以它是可选的命名参数；调用失败状态时才需要传入。
+  void _setConnectionStatus(
+    SerialPortConnectionStatus status, {
+    Object? error,
+  }) {
+    // 先比较新旧值。状态和错误都没有变化时，不必让界面重复 build。
+    final changed =
+        _connectionStatus != status ||
+        _lastConnectionError?.toString() != error?.toString();
+
+    // 无论界面是否需要刷新，Service 内部都先保存最新值。
+    _connectionStatus = status;
+    _lastConnectionError = error;
+
+    if (changed) {
+      // 通知所有监听者。MainPage 中的 ListenableBuilder 收到通知后，
+      // 会重新构建串口图标，从而更新图标、颜色和提示文字。
+      notifyListeners();
+    }
+  }
 
   /// 打开并配置串口。
   void connect({required String portName, required int baudRate}) {
     // 如果已经连接，先断开
-    if (isConnected) {
+    if (_port != null) {
       disconnect();
     }
 
@@ -61,8 +120,6 @@ class SerialPortService {
       final success = port.openReadWrite();
 
       if (!success) {
-        _releasePortObject(port);
-
         throw Exception('打开串口失败，串口可能被占用');
       }
 
@@ -94,8 +151,16 @@ class SerialPortService {
 
       // 开始监听接收串口数据
       _startReading();
+
+      // 只有“打开、配置、启动读取”全部完成，才记录信息并宣布连接成功。
+      _connectedPortName = portName;
+      _connectedBaudRate = baudRate;
+      _setConnectionStatus(SerialPortConnectionStatus.connected);
     } catch (e) {
       // 连接的任意一步失败时，都尝试关闭并释放已创建的对象。
+      _stopReading();
+      _port = null;
+
       try {
         if (port.isOpen) {
           port.close();
@@ -103,6 +168,11 @@ class SerialPortService {
       } catch (_) {}
 
       _releasePortObject(port);
+
+      // 连接失败时不能保留上一次的信息，否则导航栏可能显示错误的串口名。
+      _connectedPortName = null;
+      _connectedBaudRate = null;
+      _setConnectionStatus(SerialPortConnectionStatus.failed, error: e);
 
       // rethrow 会保留原始异常和堆栈，让 UI 层可以显示“连接失败”。
       rethrow;
@@ -169,8 +239,12 @@ class SerialPortService {
 
     // 先解除当前对象引用，使 UI 能立即读到“未连接”状态。
     _port = null;
+    _connectedPortName = null;
+    _connectedBaudRate = null;
 
     if (port == null) {
+      // 即使本来就没有 SerialPort 对象，也要把失败等旧状态恢复为未连接。
+      _setConnectionStatus(SerialPortConnectionStatus.disconnected);
       return;
     }
 
@@ -183,6 +257,9 @@ class SerialPortService {
     }
 
     _releasePortObject(port);
+
+    // 资源关闭完成后通知导航栏显示灰色的“未连接”图标。
+    _setConnectionStatus(SerialPortConnectionStatus.disconnected);
   }
 
   /// 释放 SerialPort 对象
@@ -204,8 +281,10 @@ class SerialPortService {
 
   /// 销毁整个 Service。
   /// 易错点：StreamController 关闭后不能再 add()，因此 dispose 后该对象不能复用。
+  @override
   void dispose() {
     disconnect();
     _receivedBytesController.close();
+    super.dispose();
   }
 }
