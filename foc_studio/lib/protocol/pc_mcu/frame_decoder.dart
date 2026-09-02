@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'commands.dart';
 import 'crc16_modbus.dart';
 import 'protocol_frame.dart';
 
@@ -18,7 +19,7 @@ class ProtocolFrameDecoder {
   int get discardedByteCount => _discardedByteCount;
   int get crcErrorCount => _crcErrorCount;
 
-  /// Number of complete frame candidates rejected while unpacking.
+  /// Number of frame candidates rejected while unpacking.
   ///
   /// Receiving only part of a frame is normal serial-stream behavior and is
   /// deliberately not counted as a failure; the bytes remain in [_buffer]
@@ -49,6 +50,19 @@ class ProtocolFrameDecoder {
       }
 
       final payloadLength = _buffer[3];
+      final command = PcMcuCommand.tryFromId(_buffer[2]);
+      final expectedPayloadLength = command?.payloadLength;
+      if (expectedPayloadLength != null &&
+          payloadLength != expectedPayloadLength) {
+        // A corrupted LEN must not make the decoder wait for bytes belonging
+        // to later frames. Discard only Head1 so a header already present in
+        // the buffer can be found on the next iteration.
+        _buffer.removeAt(0);
+        _discardedByteCount++;
+        _decodeFailureCount++;
+        continue;
+      }
+
       final frameLength = ProtocolFrame.frameOverhead + payloadLength;
       if (_buffer.length < frameLength) {
         break;

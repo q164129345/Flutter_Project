@@ -25,10 +25,10 @@ void main() {
       );
 
       // This is a transport-valid frame whose payload cannot be decoded as a
-      // motor-temperature message. It is a protocol error, not a disconnect.
+      // motor-enable-state message. It is a protocol error, not a disconnect.
       const encoder = ProtocolFrameEncoder();
       serialService.addReceived(
-        encoder.encode(command: 0x65, payload: const [0x01]),
+        encoder.encode(command: 0x67, payload: const [0x02]),
       );
       await tester.pump();
 

@@ -89,6 +89,29 @@ void main() {
       expect(frames.map((frame) => frame.command), [0x65, 0x67]);
     });
 
+    test(
+      'recovers immediately when a fixed-length command has corrupt LEN',
+      () {
+        final decoder = ProtocolFrameDecoder();
+        final corrupt = encoder.encode(
+          command: 0x64,
+          payload: [0xFB, 0x2E, 0x01, 0x02, 0x03, 0x04],
+        );
+        corrupt[3] = 0xFF;
+        final valid = encoder.encode(command: 0x67, payload: [0x01]);
+
+        final frames = decoder.addChunk(
+          Uint8List.fromList([...corrupt, ...valid]),
+        );
+
+        expect(frames, hasLength(1));
+        expect(frames.single.command, 0x67);
+        expect(decoder.bufferedByteCount, 0);
+        expect(decoder.crcErrorCount, 0);
+        expect(decoder.decodeFailureCount, 1);
+      },
+    );
+
     test('recovers from a corrupt frame and leading garbage', () {
       final decoder = ProtocolFrameDecoder();
       final corrupt = encoder.encode(command: 0x65, payload: [0x00, 0xFA]);
