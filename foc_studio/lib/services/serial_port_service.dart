@@ -19,6 +19,13 @@ enum SerialPortConnectionStatus {
 // extends ChangeNotifier 表示这个对象可以在状态改变时通知界面刷新。
 // NavigationRail 中的 ListenableBuilder 正在监听这个 Service。
 class SerialPortService extends ChangeNotifier {
+  /// 单次底层阻塞写的最长等待时间。
+  ///
+  /// 正常协议帧很短，在 460800 baud 下会远早于该时间完成；有限超时可以
+  /// 避免串口驱动异常时永久卡住 UI isolate。
+  static const Duration writeTimeout = Duration(seconds: 1);
+  static const int _maximumWriteAttempts = 2;
+
   // “?”表示该变量可以为 null；未连接时就没有 SerialPort 对象。
   SerialPort? _port;
 
@@ -27,7 +34,7 @@ class SerialPortService extends ChangeNotifier {
   SerialPortConnectionStatus _connectionStatus =
       SerialPortConnectionStatus.disconnected;
 
-  // 保存最近一次连接失败抛出的异常，导航栏可以把具体原因放进 Tooltip。
+  // 保存最近一次连接或传输失败抛出的异常，导航栏可以把具体原因放进 Tooltip。
   // Object? 中的“?”表示允许为 null；没有错误时它就是 null。
   Object? _lastConnectionError;
 
@@ -187,20 +194,80 @@ class SerialPortService extends ChangeNotifier {
       return;
     }
 
-    // 创建异步串口读取器
-    _reader = SerialPortReader(port);
+    // 创建异步串口读取器。回调捕获本次会话的 port/reader，避免旧会话延迟到达的
+    // error/done 事件误伤后来重新建立的连接。
+    final reader = SerialPortReader(port);
+    _reader = reader;
 
-    _readerSubscription = _reader!.stream.listen(
+    _readerSubscription = reader.stream.listen(
       (data) {
+        if (!identical(_port, port) || !identical(_reader, reader)) {
+          return;
+        }
         // 复制数据，避免底层读缓冲区被重复使用
         // 易错点：Stream 的一次 data 回调只是“当前读到的一块”，
         // 并不保证恰好是一个完整协议数据包。复杂协议需要另外做组包。
         _receivedBytesController.add(Uint8List.fromList(data));
       },
-      onError: (error) {
-        _receivedBytesController.addError(error);
+      onError: (Object error, StackTrace stackTrace) {
+        _handleReaderFailure(port, reader, error, stackTrace);
       },
+      onDone: () => _handleReaderDone(port, reader),
     );
+  }
+
+  /// SerialPortReader 的读取错误属于传输层故障，不是协议帧格式错误。
+  ///
+  /// libserialport 的读取循环在此类错误后已经退出；若仍保留 connected，业务层
+  /// 会继续发送心跳和电机控制命令，却再也收不到反馈。因此这里必须结束整个连接。
+  void _handleReaderFailure(
+    SerialPort port,
+    SerialPortReader reader,
+    Object error,
+    StackTrace stackTrace,
+  ) {
+    if (!identical(_port, port) || !identical(_reader, reader)) {
+      return;
+    }
+
+    // 保留错误事件供协议/UI 层展示，但连接状态由 Service 在传输层直接处理。
+    _receivedBytesController.addError(error, stackTrace);
+    _disconnectAfterTransportFailure(port, error);
+  }
+
+  /// 主动 disconnect 会先清空 _reader，所以只有非预期结束才会进入故障处理。
+  void _handleReaderDone(SerialPort port, SerialPortReader reader) {
+    if (!identical(_port, port) || !identical(_reader, reader)) {
+      return;
+    }
+
+    final error = StateError('串口接收流意外结束');
+    _receivedBytesController.addError(error, StackTrace.current);
+    _disconnectAfterTransportFailure(port, error);
+  }
+
+  void _disconnectAfterTransportFailure(SerialPort port, Object error) {
+    if (!identical(_port, port)) {
+      return;
+    }
+
+    debugPrint('串口传输已中断：$error');
+    _stopReading();
+
+    _port = null;
+    _connectedPortName = null;
+    _connectedBaudRate = null;
+
+    try {
+      if (port.isOpen) {
+        port.close();
+      }
+    } catch (closeError) {
+      debugPrint('传输故障后关闭串口失败：$closeError');
+    }
+
+    _releasePortObject(port);
+    _setConnectionStatus(SerialPortConnectionStatus.disconnected, error: error);
   }
 
   /// 发送原始字节，HEX 模式最终会调用这里。
@@ -209,8 +276,57 @@ class SerialPortService extends ChangeNotifier {
       throw StateError('串口没有连接');
     }
 
+    final port = _port!;
+    final data = Uint8List.fromList(bytes);
+
+    if (data.isEmpty) {
+      return 0;
+    }
+
     // write() 的返回值是实际写入的字节数，不是字符个数。
-    return _port!.write(Uint8List.fromList(bytes));
+    // timeout >= 0 会使用 libserialport 的阻塞写。即使驱动在超时时只返回
+    // 部分写入量，也继续从未写入的位置补写，绝不从下一帧开头继续。
+    try {
+      var totalWritten = 0;
+      var attempts = 0;
+      while (totalWritten < data.length) {
+        attempts++;
+        final remaining = Uint8List.sublistView(data, totalWritten);
+        final written = port.write(
+          remaining,
+          timeout: writeTimeout.inMilliseconds,
+        );
+
+        if (written < 0 || written > remaining.length) {
+          final error = StateError('串口返回了非法写入长度：$written/${remaining.length}');
+          _disconnectAfterTransportFailure(port, error);
+          throw error;
+        }
+        if (written == 0) {
+          final error = TimeoutException(
+            '串口写入超时：已写入 $totalWritten/${data.length} 字节',
+            writeTimeout,
+          );
+          _disconnectAfterTransportFailure(port, error);
+          throw error;
+        }
+
+        totalWritten += written;
+        if (totalWritten < data.length && attempts >= _maximumWriteAttempts) {
+          final error = TimeoutException(
+            '串口写入未完成：已写入 $totalWritten/${data.length} 字节',
+            writeTimeout * _maximumWriteAttempts,
+          );
+          _disconnectAfterTransportFailure(port, error);
+          throw error;
+        }
+      }
+      return totalWritten;
+    } on SerialPortError catch (error) {
+      // 参数/协议类异常不在这里处理；只有底层串口 I/O 错误才判定传输中断。
+      _disconnectAfterTransportFailure(port, error);
+      rethrow;
+    }
   }
 
   /// 发送字符串：先通过 UTF-8 转换成字节，再复用 sendBytes()。
@@ -221,13 +337,19 @@ class SerialPortService extends ChangeNotifier {
 
   /// 停止串口接收
   void _stopReading() {
-    // 先取消 Stream 监听，避免断开后回调仍继续访问旧串口。
-    _readerSubscription?.cancel();
+    // 先清空标记，让 cancel/close 触发的 onDone 被识别为主动停止。
+    final subscription = _readerSubscription;
+    final reader = _reader;
     _readerSubscription = null;
+    _reader = null;
+
+    // 先取消 Stream 监听，避免断开后回调仍继续访问旧串口。
+    if (subscription != null) {
+      unawaited(subscription.cancel());
+    }
 
     // SerialPortReader 必须关闭
-    _reader?.close();
-    _reader = null;
+    reader?.close();
   }
 
   /// 断开串口

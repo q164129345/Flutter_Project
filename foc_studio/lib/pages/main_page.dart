@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../controllers/foc_controller.dart';
 import '../services/serial_port_service.dart';
 import '../widgets/navi_rail_bottom.dart';
 import 'setting_page.dart';
@@ -19,6 +20,9 @@ class _MainPageState extends State<MainPage> {
   // 导航栏和设置页也能读取同一个连接状态。
   final SerialPortService _serialService = SerialPortService();
 
+  // FocController 负责协议解析、心跳、周期控制和结构化电机状态。
+  late final FocController _focController;
+
   // 右侧需要显示的页面。
   // late 表示稍后在 initState 中赋值；final 表示赋值一次后不能换成另一个列表。
   late final List<Widget> _pages;
@@ -26,6 +30,8 @@ class _MainPageState extends State<MainPage> {
   @override
   void initState() {
     super.initState();
+
+    _focController = FocController(_serialService);
 
     // 把同一个 _serialService 传给 SettingPage，这种做法通常称为“依赖注入”。
     // 因为 Service 由 MainPage 持有，所以离开设置页时串口不会被自动断开。
@@ -39,7 +45,8 @@ class _MainPageState extends State<MainPage> {
 
   @override
   void dispose() {
-    // MainPage 永久销毁时，才统一断开串口并释放底层资源。
+    // 先停止协议订阅和定时器，再释放其依赖的串口服务。
+    _focController.dispose();
     _serialService.dispose();
     super.dispose();
   }
