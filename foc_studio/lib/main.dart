@@ -35,6 +35,14 @@ class MainApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(home: MainPage());
+    return MaterialApp(
+      home: MainPage(),
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color.fromARGB(255, 39, 110, 241),
+          brightness: Brightness.light,
+        ),
+      ),
+    );
   }
 }
