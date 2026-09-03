@@ -19,13 +19,6 @@ enum SerialPortConnectionStatus {
 // extends ChangeNotifier 表示这个对象可以在状态改变时通知界面刷新。
 // NavigationRail 中的 ListenableBuilder 正在监听这个 Service。
 class SerialPortService extends ChangeNotifier {
-  /// 单次底层阻塞写的最长等待时间。
-  ///
-  /// 正常协议帧很短，在 460800 baud 下会远早于该时间完成；有限超时可以
-  /// 避免串口驱动异常时永久卡住 UI isolate。
-  static const Duration writeTimeout = Duration(seconds: 1);
-  static const int _maximumWriteAttempts = 2;
-
   // “?”表示该变量可以为 null；未连接时就没有 SerialPort 对象。
   SerialPort? _port;
 
@@ -283,45 +276,20 @@ class SerialPortService extends ChangeNotifier {
       return 0;
     }
 
-    // write() 的返回值是实际写入的字节数，不是字符个数。
-    // timeout >= 0 会使用 libserialport 的阻塞写。即使驱动在超时时只返回
-    // 部分写入量，也继续从未写入的位置补写，绝不从下一帧开头继续。
+    // 不传 timeout，使用 libserialport 的非阻塞写。这个方法会在 Flutter UI
+    // isolate 上被连接回调和协议定时器调用，阻塞写会让整个 Windows 窗口停止
+    // 响应；而且部分串口驱动并不保证能严格遵守 libserialport 的写超时。
+    //
+    // 返回值是本次被系统发送缓冲区接受的字节数。短写由协议层从未写入的位置
+    // 继续发送；返回 0 表示缓冲区暂时没有空间，不应被误判为串口已断开。
     try {
-      var totalWritten = 0;
-      var attempts = 0;
-      while (totalWritten < data.length) {
-        attempts++;
-        final remaining = Uint8List.sublistView(data, totalWritten);
-        final written = port.write(
-          remaining,
-          timeout: writeTimeout.inMilliseconds,
-        );
-
-        if (written < 0 || written > remaining.length) {
-          final error = StateError('串口返回了非法写入长度：$written/${remaining.length}');
-          _disconnectAfterTransportFailure(port, error);
-          throw error;
-        }
-        if (written == 0) {
-          final error = TimeoutException(
-            '串口写入超时：已写入 $totalWritten/${data.length} 字节',
-            writeTimeout,
-          );
-          _disconnectAfterTransportFailure(port, error);
-          throw error;
-        }
-
-        totalWritten += written;
-        if (totalWritten < data.length && attempts >= _maximumWriteAttempts) {
-          final error = TimeoutException(
-            '串口写入未完成：已写入 $totalWritten/${data.length} 字节',
-            writeTimeout * _maximumWriteAttempts,
-          );
-          _disconnectAfterTransportFailure(port, error);
-          throw error;
-        }
+      final written = port.write(data);
+      if (written < 0 || written > data.length) {
+        final error = StateError('串口返回了非法写入长度：$written/${data.length}');
+        _disconnectAfterTransportFailure(port, error);
+        throw error;
       }
-      return totalWritten;
+      return written;
     } on SerialPortError catch (error) {
       // 参数/协议类异常不在这里处理；只有底层串口 I/O 错误才判定传输中断。
       _disconnectAfterTransportFailure(port, error);
