@@ -17,16 +17,20 @@ class MainApp extends StatelessWidget {
           backgroundColor: Colors.blue,
         ),
         body: Card(
+          elevation: 8, // 阴影
           margin: EdgeInsets.all(32), // 外边距
+          shape: RoundedRectangleBorder( // 圆角矩形
+            borderRadius: BorderRadius.circular(24), // 圆角
+          ),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min, // 自适应高度
+            crossAxisAlignment: CrossAxisAlignment.center, // 水平居中
             children: [
               Text('电流波形', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold,color: Colors.blue),),
               SizedBox(height: 12),
               SizedBox(
                 height: 220,
-                width: double.infinity,
+                width: double.infinity, // 宽度自适应
                 child: Center(child: Text('这里放图表')),
               ),
             ],
