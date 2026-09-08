@@ -74,14 +74,26 @@ class PcMcuProtocolClient {
       _sendFrame(messageCodec.encodeQueryExternalFlashId());
 
   void _handleChunk(Uint8List chunk) {
-    if (_isDisposed) {
+    if (_isDisposed || !_serialService.isConnected) {
       return;
     }
 
-    for (final frame in frameDecoder.addChunk(chunk)) {
+    final statistics = _serialService.statistics;
+    final previousFailures = frameDecoder.decodeFailureCount;
+    final previousCrcErrors = frameDecoder.crcErrorCount;
+    final frames = frameDecoder.addChunk(chunk);
+    statistics.recordInvalidFrames(
+      count: frameDecoder.decodeFailureCount - previousFailures,
+      crcErrors: frameDecoder.crcErrorCount - previousCrcErrors,
+    );
+
+    for (final frame in frames) {
       try {
-        _messageController.add(messageCodec.decode(frame));
+        final message = messageCodec.decode(frame);
+        statistics.recordReceivedFrame();
+        _messageController.add(message);
       } catch (error, stackTrace) {
+        statistics.recordInvalidFrames(count: 1);
         _messageController.addError(error, stackTrace);
       }
     }
@@ -120,6 +132,7 @@ class PcMcuProtocolClient {
       }
       totalWritten += written;
     }
+    _serialService.statistics.recordSentFrame();
     return totalWritten;
   }
 

@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_libserialport/flutter_libserialport.dart';
 
+import 'serial_port_statistics.dart';
+
 /// enum（枚举）用于列出有限且固定的几种状态。
 /// 相比用“已连接”这类字符串判断，枚举不容易拼错，也方便 switch 逐一处理。
 enum SerialPortConnectionStatus {
@@ -19,6 +21,12 @@ enum SerialPortConnectionStatus {
 // extends ChangeNotifier 表示这个对象可以在状态改变时通知界面刷新。
 // NavigationRail 中的 ListenableBuilder 正在监听这个 Service。
 class SerialPortService extends ChangeNotifier {
+  SerialPortService({SerialPortStatistics? statistics})
+    : statistics = statistics ?? SerialPortStatistics();
+
+  // 独立通知通道：后台持续统计，只有设置页监听这些数值。
+  final SerialPortStatistics statistics;
+
   // “?”表示该变量可以为 null；未连接时就没有 SerialPort 对象。
   SerialPort? _port;
 
@@ -93,9 +101,18 @@ class SerialPortService extends ChangeNotifier {
         _connectionStatus != status ||
         _lastConnectionError?.toString() != error?.toString();
 
+    final previousStatus = _connectionStatus;
     // 无论界面是否需要刷新，Service 内部都先保存最新值。
     _connectionStatus = status;
     _lastConnectionError = error;
+
+    if (previousStatus != status) {
+      if (status == SerialPortConnectionStatus.connected) {
+        statistics.startSession();
+      } else {
+        statistics.stopSession();
+      }
+    }
 
     if (changed) {
       // 通知所有监听者。MainPage 中的 ListenableBuilder 收到通知后，
@@ -200,6 +217,7 @@ class SerialPortService extends ChangeNotifier {
         // 复制数据，避免底层读缓冲区被重复使用
         // 易错点：Stream 的一次 data 回调只是“当前读到的一块”，
         // 并不保证恰好是一个完整协议数据包。复杂协议需要另外做组包。
+        statistics.recordReceivedBytes(data.length);
         _receivedBytesController.add(Uint8List.fromList(data));
       },
       onError: (Object error, StackTrace stackTrace) {
@@ -289,6 +307,7 @@ class SerialPortService extends ChangeNotifier {
         _disconnectAfterTransportFailure(port, error);
         throw error;
       }
+      statistics.recordSentBytes(written);
       return written;
     } on SerialPortError catch (error) {
       // 参数/协议类异常不在这里处理；只有底层串口 I/O 错误才判定传输中断。
@@ -374,6 +393,7 @@ class SerialPortService extends ChangeNotifier {
   @override
   void dispose() {
     disconnect();
+    statistics.dispose();
     _receivedBytesController.close();
     super.dispose();
   }

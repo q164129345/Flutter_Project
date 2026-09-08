@@ -1,4 +1,5 @@
 import '../services/serial_port_service.dart';
+import '../widgets/serial_statistics_panel.dart';
 
 import 'package:flutter/material.dart';
 
@@ -41,21 +42,56 @@ class _SettingPageState extends State<SettingPage> {
     // 用户从其他页面重新进入设置页时，根据 Service 恢复当前连接信息。
     _selectedPort = _serialService.connectedPortName;
 
-    // switch 会覆盖枚举中的三种状态，所以无需再写 else。
-    _status = switch (_serialService.connectionStatus) {
-      SerialPortConnectionStatus.connected =>
-        '已连接 ${_serialService.connectedPortName} '
-            '${_serialService.connectedBaudRate} baud',
-      SerialPortConnectionStatus.failed =>
-        '连接失败：${_serialService.lastConnectionError ?? '未知错误'}',
-      SerialPortConnectionStatus.disconnected => '未连接',
-    };
+    _status = _connectionStatusText;
+    _serialService.addListener(_handleConnectionChanged);
 
     // initState() 在 State 创建后只执行一次，适合做首次扫描和建立监听。
     // 不要把这些操作放进 build()，因为 build() 可能被调用很多次。
     _refreshPorts(); // 程序启动以后扫描一次串口
+  }
 
-    //_listenForIncomingData();
+  String get _connectionStatusText => switch (_serialService.connectionStatus) {
+    SerialPortConnectionStatus.connected =>
+      '已连接 ${_serialService.connectedPortName} '
+          '${_serialService.connectedBaudRate} baud',
+    SerialPortConnectionStatus.failed =>
+      '连接失败：${_serialService.lastConnectionError ?? '未知错误'}',
+    SerialPortConnectionStatus.disconnected =>
+      _serialService.lastConnectionError == null
+          ? '未连接'
+          : '串口错误：${_serialService.lastConnectionError}',
+  };
+
+  // 只监听连接变化；每秒的统计通知由统计面板单独处理。
+  void _handleConnectionChanged() {
+    setState(() {
+      _status = _connectionStatusText;
+      final connectedPort = _serialService.connectedPortName;
+      if (connectedPort != null) {
+        if (!_ports.contains(connectedPort)) {
+          _ports = [..._ports, connectedPort];
+        }
+        _selectedPort = connectedPort;
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant SettingPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.serialService != _serialService) {
+      oldWidget.serialService.removeListener(_handleConnectionChanged);
+      _serialService.addListener(_handleConnectionChanged);
+      _selectedPort = _serialService.connectedPortName;
+      _status = _connectionStatusText;
+      _refreshPorts();
+    }
+  }
+
+  @override
+  void dispose() {
+    _serialService.removeListener(_handleConnectionChanged);
+    super.dispose();
   }
 
   // =========================
@@ -99,7 +135,7 @@ class _SettingPageState extends State<SettingPage> {
         portName: _selectedPort!,
         baudRate: _baudRate,
       );
-      setState(() => _status = '已连接 $_selectedPort $_baudRate baud');
+      setState(() => _status = _connectionStatusText);
     } catch (e) {
       setState(() => _status = '连接失败：$e');
     }
@@ -170,7 +206,7 @@ class _SettingPageState extends State<SettingPage> {
       child: Align(
         // 把整个设置区域放在页面左上角。
         alignment: Alignment.topLeft,
-        child: Padding(
+        child: SingleChildScrollView(
           // 设置区域与页面四周保持 24 像素距离。
           padding: const EdgeInsets.all(24),
           child: ConstrainedBox(
@@ -316,6 +352,8 @@ class _SettingPageState extends State<SettingPage> {
                       style: TextStyle(color: colorScheme.error),
                     ),
                   ),
+                const SizedBox(height: 32),
+                SerialStatisticsPanel(statistics: _serialService.statistics),
               ],
             ),
           ),
