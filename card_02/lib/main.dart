@@ -17,7 +17,7 @@ class MainApp extends StatelessWidget {
           backgroundColor: Colors.blue,
         ),
         body: SizedBox(
-          width: 300, // 设置卡片宽度
+          width: 200, // 设置卡片宽度
           child: Card.filled(
             child: Padding(
               padding: const EdgeInsets.all(20), // 内边距
