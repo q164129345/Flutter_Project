@@ -12,18 +12,27 @@ class MainApp extends StatelessWidget {
     return MaterialApp(
       home: Scaffold(
         appBar: AppBar(
-          title: Text('Card02'),
+          title: Text('Card02 - Card.filled()'),
           centerTitle: true,
           backgroundColor: Colors.blue,
         ),
-        body: Card.filled(
-          margin: const EdgeInsets.all(16),
-          child: ListTile(
-            leading: const Icon(Icons.usb),
-            title: const Text('串口配置'),
-            subtitle: const Text('COM3 - 115200 baud'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => debugPrint('打开串口配置'),
+        body: SizedBox(
+          width: 300, // 设置卡片宽度
+          child: Card.filled(
+            child: Padding(
+              padding: const EdgeInsets.all(20), // 内边距
+              child: Column(
+                mainAxisSize: MainAxisSize.min, // 根据内容自适应高度
+                crossAxisAlignment: CrossAxisAlignment.start, // 内容靠左对齐
+                children: const [
+                  Text('电机01 运行状态', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  SizedBox(height: 16),
+                  Text('转速：1500 rpm'),
+                  Text('电流：0.8 A'),
+                  Text('温度：42 ℃'),
+                ],
+              ),
+            ),
           ),
         ),
       ),
