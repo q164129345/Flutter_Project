@@ -44,6 +44,7 @@ class _SettingPageState extends State<SettingPage> {
 
     _status = _connectionStatusText;
     _serialService.addListener(_handleConnectionChanged);
+    _serialService.busy.addListener(_handleBusyChanged);
 
     // initState() 在 State 创建后只执行一次，适合做首次扫描和建立监听。
     // 不要把这些操作放进 build()，因为 build() 可能被调用很多次。
@@ -63,6 +64,9 @@ class _SettingPageState extends State<SettingPage> {
   };
 
   // 只监听连接变化；每秒的统计通知由统计面板单独处理。
+  // 只更新按钮/输入框的可操作状态，不监听高频遥测数据。
+  void _handleBusyChanged() => setState(() {});
+
   void _handleConnectionChanged() {
     setState(() {
       _status = _connectionStatusText;
@@ -81,7 +85,9 @@ class _SettingPageState extends State<SettingPage> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.serialService != _serialService) {
       oldWidget.serialService.removeListener(_handleConnectionChanged);
+      oldWidget.serialService.busy.removeListener(_handleBusyChanged);
       _serialService.addListener(_handleConnectionChanged);
+      _serialService.busy.addListener(_handleBusyChanged);
       _selectedPort = _serialService.connectedPortName;
       _status = _connectionStatusText;
       _refreshPorts();
@@ -91,15 +97,29 @@ class _SettingPageState extends State<SettingPage> {
   @override
   void dispose() {
     _serialService.removeListener(_handleConnectionChanged);
+    _serialService.busy.removeListener(_handleBusyChanged);
     super.dispose();
   }
 
   // =========================
   // 扫描串口
   // =========================
-  void _refreshPorts() {
+  Future<void> _refreshPorts() async {
+    // 记住发起请求时的 Service，防止等待期间 Widget 被换成另一个 Service。
+    final service = _serialService;
+    final connectedPort = service.connectedPortName;
+    if (connectedPort != null) {
+      // 已连接时直接显示当前端口，切回设置页无需再次调用驱动扫描串口。
+      setState(() {
+        _ports = [connectedPort];
+        _selectedPort = connectedPort;
+      });
+      return;
+    }
     try {
-      final ports = _serialService.getAvailablePorts(); // 获取有效的串口列表
+      final ports = await service.getAvailablePorts();
+      // await 期间用户可能已切页；卸载后禁止 setState，也不能应用旧 Service 的回复。
+      if (!mounted || service != _serialService) return;
       String? selectedPort = _selectedPort;
 
       // 刷新后原串口可能已被拔出。如果原选择仍有效就保留，
@@ -114,6 +134,7 @@ class _SettingPageState extends State<SettingPage> {
         _selectedPort = selectedPort;
       });
     } catch (e) {
+      if (!mounted || service != _serialService) return;
       setState(() => _status = '扫描串口失败：$e');
     }
   }
@@ -121,22 +142,26 @@ class _SettingPageState extends State<SettingPage> {
   // =========================
   // 连接串口
   // =========================
-  void _connect() {
+  // 只等待后台连接结果，硬件打开/配置本身不在 UI isolate 中执行。
+  Future<void> _connect() async {
     if (_selectedPort == null) {
       setState(() => _status = '没有可用串口');
 
       return;
     }
 
+    final service = _serialService;
     try {
-      _serialService.connect(
+      await service.connect(
         // 前面已经判断不为 null，所以这里可以用“!”做非空断言。
         // 易错点：不要在未检查 null 的情况下随意使用 !，否则运行时会崩溃。
         portName: _selectedPort!,
         baudRate: _baudRate,
       );
+      if (!mounted || service != _serialService) return;
       setState(() => _status = _connectionStatusText);
     } catch (e) {
+      if (!mounted || service != _serialService) return;
       setState(() => _status = '连接失败：$e');
     }
   }
@@ -144,9 +169,17 @@ class _SettingPageState extends State<SettingPage> {
   // =========================
   // 断开串口
   // =========================
-  void _disconnect() {
-    _serialService.disconnect();
-    setState(() => _status = '未连接');
+  // 断开同样异步执行；等待过程中可以正常切页，回来后从 Service 恢复状态。
+  Future<void> _disconnect() async {
+    final service = _serialService;
+    try {
+      await service.disconnect();
+      if (!mounted || service != _serialService) return;
+      setState(() => _status = _connectionStatusText);
+    } catch (e) {
+      if (!mounted || service != _serialService) return;
+      setState(() => _status = '断开失败：$e');
+    }
   }
 
   // =========================
@@ -260,7 +293,7 @@ class _SettingPageState extends State<SettingPage> {
 
                           // Flutter 约定：onChanged 为 null 时，控件就是禁用状态。
                           // 已连接时禁止切换串口，避免 UI 选择与实际连接的端口不一致。
-                          onChanged: _isConnected
+                          onChanged: _isConnected || _serialService.isBusy
                               ? null
                               : (port) {
                                   // 仅给变量赋值不会刷新页面；需要放进 setState，
@@ -276,7 +309,9 @@ class _SettingPageState extends State<SettingPage> {
                       // filledTonal 是 Material 3 的浅色圆形图标按钮。
                       IconButton.filledTonal(
                         // 连接期间同样禁用刷新，防止串口列表变化后选中项被替换。
-                        onPressed: _isConnected ? null : _refreshPorts,
+                        onPressed: _isConnected || _serialService.isBusy
+                            ? null
+                            : _refreshPorts,
 
                         // 鼠标悬停时显示提示，也能为无障碍工具提供按钮说明。
                         tooltip: '刷新串口',
@@ -315,7 +350,9 @@ class _SettingPageState extends State<SettingPage> {
                           child: FilledButton.icon(
                             // 这里传递的是函数本身，不能写成 _toggleConnection()。
                             // 易错点：加括号会在 build 时立刻执行，而不是点击时执行。
-                            onPressed: _toggleConnection,
+                            onPressed: _serialService.isBusy
+                                ? null
+                                : _toggleConnection,
                             style: FilledButton.styleFrom(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 14,

@@ -1,6 +1,10 @@
 # foc_studio 代码结构与 UML
 
-本文档依据当前 `lib/` 源代码整理。图中省略了 Flutter 布局控件、窗口管理器等与串口业务无关的框架细节；类名、字段名和方法名均沿用源代码。
+下方详细类图和时序图保留为串口后台 isolate 重构前的结构参考。
+当前执行边界、页面订阅与生命周期请参阅 [串口执行与 UI 更新](context/serial_execution.md)：
+`SerialPortService` 和 `FocController` 现为 UI 代理；原有原始串口操作和会话处理
+分别移入后台的 `SerialTransport`、`FocSession`。解包、统计、历史记录及心跳均在
+常驻串口 isolate 中执行，UI 只按需读取显示快照。
 
 ## 1. UML 类图
 

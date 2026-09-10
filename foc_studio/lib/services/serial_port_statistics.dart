@@ -1,122 +1,62 @@
-import 'dart:async';
-
 import 'package:flutter/foundation.dart';
 
-/// 串口会话统计：收发时只累计数值，每秒采样速率并通知当前的 UI 监听者。
-/// 页面没有监听时仍然统计；不通过 SerialPortService 的连接通知刷新其他组件。
+import 'serial_statistics_snapshot.dart';
+
+/// UI 侧的统计显示对象：保存后台快照，不在这里累计字节或计算速率。
+/// 统计面板挂载/卸载时，通过回调通知服务开始/停止请求显示快照。
 class SerialPortStatistics extends ChangeNotifier {
-  SerialPortStatistics({Duration Function()? elapsed})
-    : _elapsed = elapsed ?? _monotonicClock();
+  SerialPortStatistics({this.onListeningChanged});
 
-  static const sampleInterval = Duration(seconds: 1);
+  // true 表示至少有一个监听者，false 表示已无人需要显示统计。
+  final void Function(bool)? onListeningChanged;
+  bool _observing = false;
+  SerialStatisticsSnapshot _snapshot = const SerialStatisticsSnapshot();
+  int get sentFrameCount => _snapshot.sentFrameCount;
+  int get sentByteCount => _snapshot.sentByteCount;
+  int get receivedFrameCount => _snapshot.receivedFrameCount;
+  int get receivedByteCount => _snapshot.receivedByteCount;
+  int get crcErrorCount => _snapshot.crcErrorCount;
+  int get invalidFrameCount => _snapshot.invalidFrameCount;
+  double get sendBytesPerSecond => _snapshot.sendBytesPerSecond;
+  double get receiveBytesPerSecond => _snapshot.receiveBytesPerSecond;
 
-  final Duration Function() _elapsed;
-  Timer? _sampleTimer;
-  Duration _lastSampleAt = Duration.zero;
-  int _lastSentBytes = 0;
-  int _lastReceivedBytes = 0;
-
-  int _sentFrameCount = 0;
-  int _sentByteCount = 0;
-  int _receivedFrameCount = 0;
-  int _receivedByteCount = 0;
-  int _crcErrorCount = 0;
-  int _invalidFrameCount = 0;
-  double _sendBytesPerSecond = 0;
-  double _receiveBytesPerSecond = 0;
-
-  /// 完整写入系统发送缓冲区的协议帧数；短写重试不重复计帧。
-  int get sentFrameCount => _sentFrameCount;
-
-  /// 系统实际接受的发送字节数，包含未能完整发送的帧的已写入部分。
-  int get sentByteCount => _sentByteCount;
-
-  /// 通过帧校验和消息解码的完整接收帧数。
-  int get receivedFrameCount => _receivedFrameCount;
-
-  /// 原始接收字节数，包含帧头、CRC、无效帧、噪声和未完成的帧。
-  int get receivedByteCount => _receivedByteCount;
-  int get crcErrorCount => _crcErrorCount;
-
-  /// 帧长度、CRC 或消息内容错误。CRC 错误是其中的子集，不重复累加。
-  /// 零散噪声和等待补齐的半帧不计为无效帧。
-  int get invalidFrameCount => _invalidFrameCount;
-  double get sendBytesPerSecond => _sendBytesPerSecond;
-  double get receiveBytesPerSecond => _receiveBytesPerSecond;
-
-  void recordSentBytes(int count) {
-    assert(count >= 0);
-    _sentByteCount += count;
-  }
-
-  void recordSentFrame() => _sentFrameCount++;
-
-  void recordReceivedBytes(int count) {
-    assert(count >= 0);
-    _receivedByteCount += count;
-  }
-
-  void recordReceivedFrame() => _receivedFrameCount++;
-
-  void recordInvalidFrames({required int count, int crcErrors = 0}) {
-    assert(count >= 0 && crcErrors >= 0 && crcErrors <= count);
-    _invalidFrameCount += count;
-    _crcErrorCount += crcErrors;
-  }
-
-  /// 成功建立新连接时清零；计数生命周期与设置页无关。
-  void startSession() {
-    _sampleTimer?.cancel();
-    _sentFrameCount = 0;
-    _sentByteCount = 0;
-    _receivedFrameCount = 0;
-    _receivedByteCount = 0;
-    _crcErrorCount = 0;
-    _invalidFrameCount = 0;
-    _sendBytesPerSecond = 0;
-    _receiveBytesPerSecond = 0;
-    _lastSentBytes = 0;
-    _lastReceivedBytes = 0;
-    _lastSampleAt = _elapsed();
-    _sampleTimer = Timer.periodic(sampleInterval, (_) => _sampleRates());
+  /// 只有数值真正变化才刷新面板，避免空闲时每秒重复重建相同 UI。
+  void update(SerialStatisticsSnapshot snapshot) {
+    if (_snapshot.sameValues(snapshot)) return;
+    _snapshot = snapshot;
     notifyListeners();
   }
 
-  /// 断开后保留累计值，立即归零速率并停止采样。
-  void stopSession() {
-    _sampleTimer?.cancel();
-    _sampleTimer = null;
-    _sendBytesPerSecond = 0;
-    _receiveBytesPerSecond = 0;
-    notifyListeners();
+  @override
+  void addListener(VoidCallback listener) {
+    super.addListener(listener);
+    _syncObservation();
   }
 
-  void _sampleRates() {
-    final now = _elapsed();
-    final microseconds = (now - _lastSampleAt).inMicroseconds;
-    if (microseconds <= 0) {
-      return;
-    }
-
-    // 使用实际经过时间，避免定时器延迟导致 B/s 被高估。
-    final seconds = microseconds / Duration.microsecondsPerSecond;
-    _sendBytesPerSecond = (_sentByteCount - _lastSentBytes) / seconds;
-    _receiveBytesPerSecond =
-        (_receivedByteCount - _lastReceivedBytes) / seconds;
-    _lastSentBytes = _sentByteCount;
-    _lastReceivedBytes = _receivedByteCount;
-    _lastSampleAt = now;
-    notifyListeners();
+  @override
+  void removeListener(VoidCallback listener) {
+    super.removeListener(listener);
+    _syncObservation();
   }
 
-  static Duration Function() _monotonicClock() {
-    final clock = Stopwatch()..start();
-    return () => clock.elapsed;
+  @override
+  void notifyListeners() {
+    super.notifyListeners();
+    // ChangeNotifier 会延后清理回调中被移除的监听者，通知结束后需再次检查。
+    _syncObservation();
+  }
+
+  // 只报告“有/无监听者”的切换，多次添加监听不会重复创建快照定时器。
+  void _syncObservation() {
+    if (_observing == hasListeners) return;
+    _observing = hasListeners;
+    onListeningChanged?.call(_observing);
   }
 
   @override
   void dispose() {
-    _sampleTimer?.cancel();
+    if (_observing) onListeningChanged?.call(false);
+    _observing = false;
     super.dispose();
   }
 }

@@ -20,7 +20,7 @@ class _MainPageState extends State<MainPage> {
   // 导航栏和设置页也能读取同一个连接状态。
   final SerialPortService _serialService = SerialPortService();
 
-  // FocController 负责协议解析、心跳、周期控制和结构化电机状态。
+  // FocController 仅提供显示快照和命令入口，解析、心跳和统计由后台会话执行。
   late final FocController _focController;
 
   // 右侧需要显示的页面。
@@ -45,7 +45,7 @@ class _MainPageState extends State<MainPage> {
 
   @override
   void dispose() {
-    // 先停止协议订阅和定时器，再释放其依赖的串口服务。
+    // 先解除 UI 的业务订阅，再通知服务关闭后台串口会话。
     _focController.dispose();
     _serialService.dispose();
     super.dispose();
@@ -121,7 +121,8 @@ class _MainPageState extends State<MainPage> {
           // 左侧导航栏与右侧页面之间的分割线
           const VerticalDivider(width: 1, thickness: 1),
 
-          //右侧页面占满剩余空间
+          // 只把当前选中的页面挂到组件树上，旧页面的 dispose 会解除 UI 监听。
+          // 串口服务由 MainPage 持有，不会随着右侧页面卸载而停止后台解包。
           Expanded(child: _pages[_selectedIndex]),
         ],
       ),
