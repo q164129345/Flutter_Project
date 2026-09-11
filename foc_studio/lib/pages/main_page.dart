@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../controllers/foc_controller.dart';
 import '../services/serial_port_service.dart';
 import '../widgets/navi_rail_bottom.dart';
+import 'mot_page.dart';
 import 'setting_page.dart';
 
 class MainPage extends StatefulWidget {
@@ -36,7 +37,7 @@ class _MainPageState extends State<MainPage> {
     // 把同一个 _serialService 传给 SettingPage，这种做法通常称为“依赖注入”。
     // 因为 Service 由 MainPage 持有，所以离开设置页时串口不会被自动断开。
     _pages = [
-      const Center(child: Text('当前是MOT', style: TextStyle(fontSize: 30))),
+      const MotPage(),
       const Center(child: Text('当前是POS', style: TextStyle(fontSize: 30))),
       const Center(child: Text('当前是CHT', style: TextStyle(fontSize: 30))),
       SettingPage(serialService: _serialService),
