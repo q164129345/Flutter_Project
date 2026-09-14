@@ -15,7 +15,7 @@ Future<void> main() async {
 
   // 定义窗口启动时使用的配置。
   // Size 的单位是逻辑像素，这里限制窗口不能缩小到 900 × 600 以下。
-  const windowOptions = WindowOptions(minimumSize: Size(900, 600));
+  const windowOptions = WindowOptions(minimumSize: Size(1100, 800));
 
   // 等待原生窗口准备完成，并将上面的窗口配置应用到它。
   await windowManager.waitUntilReadyToShow(windowOptions, () async {

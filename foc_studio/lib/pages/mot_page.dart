@@ -125,7 +125,7 @@ class _Panel extends StatelessWidget {
     return Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Color.fromARGB(255, 250, 250, 242),
         border: Border.all(color: _panelBorder),
         borderRadius: BorderRadius.circular(8),
       ),
