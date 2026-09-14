@@ -1,3 +1,10 @@
+/// 协议中的转速为有符号 16 位整数。
+void validateTargetSpeedRpm(int value) {
+  if (value < -0x8000 || value > 0x7fff) {
+    throw RangeError.range(value, -0x8000, 0x7fff, 'targetSpeedRpm');
+  }
+}
+
 class MotorControlCommand {
   const MotorControlCommand({
     required this.enabled,

@@ -256,7 +256,11 @@ class SerialPortService extends ChangeNotifier {
   Future<bool> sendCommand(
     SerialOperation operation, [
     Object? argument,
-  ]) async => (await _request(operation, argument)) as bool? ?? true;
+  ]) async => (await _request(operation, argument)) as bool;
+
+  Future<void> clearProtocolError() async {
+    await _request(SerialOperation.clearProtocolError);
+  }
 
   /// 面板出现时立即取一次累计值，然后每秒更新；面板消失只停止取快照。
   /// 后台的字节计数、帧计数和速率采样始终按会话状态独立执行。

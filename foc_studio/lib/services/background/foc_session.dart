@@ -16,8 +16,8 @@ import 'serial_transport.dart';
 ///
 /// SerialTransport 负责原始字节，PcMcuProtocolClient 负责协议帧和消息；
 /// 本类负责心跳、周期控制、参数查询/读回、时间对齐和历史数据。
-/// 它的通知只在后台更新版本号，页面通过 FocController 获取显示快照。
-class FocSession extends ChangeNotifier {
+/// 状态变化只增加版本号，页面通过 FocController 获取显示快照。
+class FocSession {
   FocSession(
     this.serialService, {
     PcMcuProtocolClient? protocolClient,
@@ -31,15 +31,18 @@ class FocSession extends ChangeNotifier {
        _now = now ?? DateTime.now {
     _lastConnectionStatus = serialService.connectionStatus;
     serialService.addListener(_handleConnectionChanged);
-    _messageSubscription = _protocolClient.messages.listen(
-      // 这个订阅与页面生命周期无关，页面隐藏后仍逐条处理已解出的消息。
-      _handleMessage,
-      onError: _handleProtocolError,
-    );
+    _listenMessages();
 
     if (serialService.isConnected) {
       _startSession();
     }
+  }
+
+  void _listenMessages() {
+    _messageSubscription = _protocolClient.messages.listen(
+      _handleMessage,
+      onError: _handleProtocolError,
+    );
   }
 
   static const Duration heartbeatInterval = Duration(seconds: 1);
@@ -66,7 +69,7 @@ class FocSession extends ChangeNotifier {
       ListQueue();
   final ListQueue<TimestampedSample<McuLogMessage>> _logs = ListQueue();
 
-  late final StreamSubscription<McuMessage> _messageSubscription;
+  late StreamSubscription<McuMessage> _messageSubscription;
   late SerialPortConnectionStatus _lastConnectionStatus;
   // 定时器都在本后台 isolate 中运行，UI 忙碌或切页不会暂停这些会话策略。
   Timer? _heartbeatTimer;
@@ -97,7 +100,8 @@ class FocSession extends ChangeNotifier {
   DipSwitchIdMessage? _dipSwitchId;
   ExternalFlashIdMessage? _externalFlashId;
 
-  Stream<McuMessage> get messages => _protocolClient.messages;
+  int _revision = 0;
+  int get revision => _revision;
   bool get isConnected => serialService.isConnected;
   bool get motorControlEnabled => _motorControlEnabled;
   int get targetSpeedRpm => _targetSpeedRpm;
@@ -133,7 +137,7 @@ class FocSession extends ChangeNotifier {
       List.unmodifiable(_hallHistory);
   List<TimestampedSample<McuLogMessage>> get logs => List.unmodifiable(_logs);
 
-  /// 仅在 UI 请求且版本有变化时调用，把此刻的状态和有限历史整理成快照。
+  /// 仅在 UI 请求且版本有变化时调用，只整理最新状态，不复制历史。
   /// 错误转成文本，传出去的对象只包含数据，不带本地串口资源。
   FocSnapshot snapshot() => FocSnapshot(
     isConnected: isConnected,
@@ -157,23 +161,16 @@ class FocSession extends ChangeNotifier {
     motorLimits: motorLimits,
     dipSwitchId: dipSwitchId,
     externalFlashId: externalFlashId,
-    speedHistory: speedHistory,
-    dqHistory: dqHistory,
-    currentHistory: currentHistory,
-    hallHistory: hallHistory,
-    logs: logs,
   );
 
   /// 保存用户设定的目标并立即加入发送队列，之后每 500 ms 重发同一控制命令。
   /// 返回 true 表示接受了发送操作，不表示下位机已经完成执行。
   bool setMotorControl({required bool enabled, required int targetSpeedRpm}) {
-    if (targetSpeedRpm < -0x8000 || targetSpeedRpm > 0x7FFF) {
-      throw RangeError.range(targetSpeedRpm, -0x8000, 0x7FFF, 'targetSpeedRpm');
-    }
+    validateTargetSpeedRpm(targetSpeedRpm);
 
     _motorControlEnabled = enabled;
     _targetSpeedRpm = targetSpeedRpm;
-    notifyListeners();
+    _revision++;
     return _sendMotorControl();
   }
 
@@ -195,14 +192,13 @@ class FocSession extends ChangeNotifier {
     required CurrentLoopParameters currentLoop,
     required MotorLimits motorLimits,
   }) {
-    return _trySend(() {
-      _protocolClient.setSpeedLoopParameters(speedLoop);
-      _protocolClient.setCurrentLoopParameters(currentLoop);
-      _protocolClient.setMotorLimits(motorLimits);
-      _protocolClient.querySpeedLoopParameters();
-      _protocolClient.queryCurrentLoopParameters();
-      _protocolClient.queryMotorLimits();
-    });
+    return _trySend(
+      () => _protocolClient.writeTuneParameters(
+        speedLoop: speedLoop,
+        currentLoop: currentLoop,
+        motorLimits: motorLimits,
+      ),
+    );
   }
 
   bool queryDipSwitchId() => _trySend(_protocolClient.queryDipSwitchId);
@@ -213,7 +209,7 @@ class FocSession extends ChangeNotifier {
     final sent = _trySend(_protocolClient.rebootMcu);
     if (sent) {
       _prepareForMcuRestart();
-      notifyListeners();
+      _revision++;
     }
     return sent;
   }
@@ -221,7 +217,7 @@ class FocSession extends ChangeNotifier {
   void clearProtocolError() {
     if (_lastProtocolError != null) {
       _lastProtocolError = null;
-      notifyListeners();
+      _revision++;
     }
   }
 
@@ -230,13 +226,16 @@ class FocSession extends ChangeNotifier {
     final status = serialService.connectionStatus;
     if (status != _lastConnectionStatus) {
       _lastConnectionStatus = status;
+      // 取消旧订阅也丢弃尚未投递的消息，防止重连后写回旧状态。
+      unawaited(_messageSubscription.cancel());
+      _listenMessages();
       if (status == SerialPortConnectionStatus.connected) {
         _startSession();
       } else {
-        _stopSession(resetState: true);
+        _stopSession();
       }
     }
-    notifyListeners();
+    _revision++;
   }
 
   /// 新连接先清理旧状态，再发送初始命令并启动后台周期任务。
@@ -261,11 +260,9 @@ class FocSession extends ChangeNotifier {
     _startMotorTypePolling();
   }
 
-  void _stopSession({required bool resetState}) {
+  void _stopSession() {
     _cancelTimers();
-    if (resetState) {
-      _resetSessionState();
-    }
+    _resetSessionState();
   }
 
   /// 未拿到有效电机类型时每秒查询一次，成功识别后停止无意义的重复查询。
@@ -316,14 +313,14 @@ class FocSession extends ChangeNotifier {
       return true;
     } catch (error) {
       _lastProtocolError = error;
-      notifyListeners();
+      _revision++;
       return false;
     }
   }
 
   /// 每条解码成功的消息都更新后台状态，不能因 UI 不可见而跳过采样。
   void _handleMessage(McuMessage message) {
-    if (_isDisposed) {
+    if (_isDisposed || !isConnected) {
       return;
     }
 
@@ -382,8 +379,8 @@ class FocSession extends ChangeNotifier {
         break;
     }
 
-    // 此通知只让后台记录状态版本变化，不会按每条消息直接重建 UI。
-    notifyListeners();
+    // 只记录状态版本变化，不会按每条消息直接重建 UI。
+    _revision++;
   }
 
   /// 按 MCU 采样 tick 对齐时间，保留真实采样间隔，避免批量到达时曲线时间重叠。
@@ -406,7 +403,7 @@ class FocSession extends ChangeNotifier {
     // 由 SerialTransport 切换连接状态，并通过 _handleConnectionChanged 停止会话。
     _lastProtocolError = error;
     debugPrint('PC-MCU protocol error: $error\n$stackTrace');
-    notifyListeners();
+    _revision++;
   }
 
   void _resetSessionState() {
@@ -461,7 +458,6 @@ class FocSession extends ChangeNotifier {
     queue.addLast(value);
   }
 
-  @override
   void dispose() {
     if (_isDisposed) {
       return;
@@ -473,6 +469,5 @@ class FocSession extends ChangeNotifier {
     if (_ownsProtocolClient) {
       _protocolClient.dispose();
     }
-    super.dispose();
   }
 }

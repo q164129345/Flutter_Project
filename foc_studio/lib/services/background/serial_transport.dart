@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -21,16 +20,13 @@ class SerialTransport extends ChangeNotifier {
   // 后台累计与采样。设置页通过 UI 代理按需获取数值快照。
   final SerialStatisticsAccumulator statistics;
 
-  // “?”表示该变量可以为 null；未连接时就没有 SerialPort 对象。
   SerialPort? _port;
 
   // 保存当前连接状态。程序刚启动时还没有连接，所以初始值为 disconnected。
-  // 下划线开头表示私有字段，只有本文件中的代码可以直接修改它。
   SerialPortConnectionStatus _connectionStatus =
       SerialPortConnectionStatus.disconnected;
 
   // 保存最近一次连接或传输失败抛出的异常，导航栏可以把具体原因放进 Tooltip。
-  // Object? 中的“?”表示允许为 null；没有错误时它就是 null。
   Object? _lastConnectionError;
 
   // 连接成功后记录实际使用的串口名和波特率，例如 COM3、460800。
@@ -38,9 +34,6 @@ class SerialTransport extends ChangeNotifier {
   String? _connectedPortName;
   int? _connectedBaudRate;
 
-  // getter 只允许外部读取状态，不允许外部直接修改上面的私有字段。
-  // “=>”是只有一个表达式时的简写，相当于 { return _connectionStatus; }。
-  // int?声明的函数返回值类型是可空的 int，表示可能返回 null。
   SerialPortConnectionStatus get connectionStatus => _connectionStatus;
   Object? get lastConnectionError => _lastConnectionError;
   String? get connectedPortName => _connectedPortName;
@@ -63,29 +56,17 @@ class SerialTransport extends ChangeNotifier {
   final StreamController<Uint8List> _receivedBytesController =
       StreamController<Uint8List>.broadcast();
 
-  /// HEX 模式直接使用原始字节，不做文字解码。
+  /// 后台协议层的原始字节入口。
   Stream<Uint8List> get receivedBytesStream => _receivedBytesController.stream;
-
-  /// 字符串模式：原始字节 -> UTF-8 文本 -> 按换行符拆分。
-  ///
-  /// allowMalformed 为 true 时，非法 UTF-8 字节会被替换字符代替，不会让整个流报错中断。
-  /// LineSplitter 只在收到 \n 或 \r\n 后才产生一条消息；
-  /// 如果设备不发换行符，字符串模式就会一直等待。
-  Stream<String> get receivedTextStream => receivedBytesStream
-      .cast<List<int>>()
-      .transform(const Utf8Decoder(allowMalformed: true))
-      .transform(const LineSplitter());
 
   // 必须同时满足两个条件才算真正连接：
   // 1. 业务状态已经变成 connected；2. 系统底层的串口仍然处于打开状态。
-  // “?.”是空安全访问，“?? false”表示 _port 为 null 时返回 false。
   bool get isConnected =>
       _connectionStatus == SerialPortConnectionStatus.connected &&
       (_port?.isOpen ?? false);
 
   /// 统一修改后台连接状态，通知业务会话和向 UI 转发状态的监听者。
   ///
-  /// error 放在花括号中，所以它是可选的命名参数；调用失败状态时才需要传入。
   void _setConnectionStatus(
     SerialPortConnectionStatus status, {
     Object? error,
@@ -152,7 +133,6 @@ class SerialTransport extends ChangeNotifier {
         // 应用配置
         port.config = config;
       } finally {
-        // finally 无论配置成功还是抛出异常都会执行，用于保证资源释放。
         config.dispose();
       }
 
@@ -167,21 +147,7 @@ class SerialTransport extends ChangeNotifier {
       _connectedBaudRate = baudRate;
       _setConnectionStatus(SerialPortConnectionStatus.connected);
     } catch (e) {
-      // 连接的任意一步失败时，都尝试关闭并释放已创建的对象。
-      _stopReading();
-      _port = null;
-
-      try {
-        if (port.isOpen) {
-          port.close();
-        }
-      } catch (_) {}
-
-      _releasePortObject(port);
-
-      // 连接失败时不能保留上一次的信息，否则导航栏可能显示错误的串口名。
-      _connectedPortName = null;
-      _connectedBaudRate = null;
+      _closePort(port);
       _setConnectionStatus(SerialPortConnectionStatus.failed, error: e);
 
       // rethrow 会保留原始异常和堆栈，让 UI 层可以显示“连接失败”。
@@ -254,33 +220,17 @@ class SerialTransport extends ChangeNotifier {
       return;
     }
 
-    debugPrint('串口传输已中断：$error');
-    _stopReading();
-
-    _port = null;
-    _connectedPortName = null;
-    _connectedBaudRate = null;
-
-    try {
-      if (port.isOpen) {
-        port.close();
-      }
-    } catch (closeError) {
-      debugPrint('传输故障后关闭串口失败：$closeError');
-    }
-
-    _releasePortObject(port);
+    _closePort(port);
     _setConnectionStatus(SerialPortConnectionStatus.disconnected, error: error);
   }
 
-  /// 发送原始字节，HEX 模式最终会调用这里。
-  int sendBytes(List<int> bytes) {
+  /// 同步提交字节视图；返回系统缓冲区实际接受的字节数。
+  int sendBytes(Uint8List data) {
     if (!isConnected || _port == null) {
       throw StateError('串口没有连接');
     }
 
     final port = _port!;
-    final data = Uint8List.fromList(bytes);
 
     if (data.isEmpty) {
       return 0;
@@ -308,12 +258,6 @@ class SerialTransport extends ChangeNotifier {
     }
   }
 
-  /// 发送字符串：先通过 UTF-8 转换成字节，再复用 sendBytes()。
-  /// 注意：一个中文字符通常会编码成 3 个 UTF-8 字节。
-  int sendText(String text) {
-    return sendBytes(utf8.encode(text));
-  }
-
   /// 停止串口接收
   void _stopReading() {
     // 先清空标记，让 cancel/close 触发的 onDone 被识别为主动停止。
@@ -331,36 +275,31 @@ class SerialTransport extends ChangeNotifier {
     reader?.close();
   }
 
-  /// 断开串口
   void disconnect() {
-    // 先停止接收
-    _stopReading();
+    _closePort(_port);
+    _setConnectionStatus(SerialPortConnectionStatus.disconnected);
+  }
 
-    final port = _port;
-
-    // 先解除当前对象引用，使 UI 能立即读到“未连接”状态。
+  /// 三种退出路径共用清理；先使旧回调失效，再关闭本地资源。
+  void _closePort(SerialPort? port) {
     _port = null;
     _connectedPortName = null;
     _connectedBaudRate = null;
-
-    if (port == null) {
-      // 即使本来就没有 SerialPort 对象，也要把失败等旧状态恢复为未连接。
-      _setConnectionStatus(SerialPortConnectionStatus.disconnected);
-      return;
-    }
-
     try {
-      if (port.isOpen) {
-        port.close();
+      _stopReading();
+    } catch (error) {
+      debugPrint('停止串口读取失败：$error');
+    } finally {
+      if (port != null) {
+        try {
+          if (port.isOpen) port.close();
+        } catch (error) {
+          debugPrint('关闭串口失败：$error');
+        } finally {
+          _releasePortObject(port);
+        }
       }
-    } catch (e) {
-      debugPrint('关闭串口失败：$e');
     }
-
-    _releasePortObject(port);
-
-    // 资源关闭完成后通知导航栏显示灰色的“未连接”图标。
-    _setConnectionStatus(SerialPortConnectionStatus.disconnected);
   }
 
   /// 释放 SerialPort 对象

@@ -21,6 +21,10 @@ class PcMcuProtocolClient {
        messageCodec = messageCodec ?? const PcMcuMessageCodec() {
     _wasConnected = _serialService.isConnected;
     _serialService.addListener(_handleConnectionChanged);
+    _listenBytes();
+  }
+
+  void _listenBytes() {
     _serialSubscription = _serialService.receivedBytesStream.listen(
       _handleChunk,
       onError: _handleSerialError,
@@ -34,7 +38,7 @@ class PcMcuProtocolClient {
   final StreamController<McuMessage> _messageController =
       StreamController<McuMessage>.broadcast();
 
-  late final StreamSubscription<Uint8List> _serialSubscription;
+  late StreamSubscription<Uint8List> _serialSubscription;
   late bool _wasConnected;
   bool _isDisposed = false;
   // 保持整帧发送顺序：上一帧未写完时，下一帧不能插到它的中间。
@@ -46,7 +50,6 @@ class PcMcuProtocolClient {
   int _queuedBytes = 0;
 
   Stream<McuMessage> get messages => _messageController.stream;
-  int get frameDecodeFailureCount => frameDecoder.decodeFailureCount;
 
   int sendMotorControl(MotorControlCommand command) =>
       _sendFrame(messageCodec.encodeMotorControl(command));
@@ -64,18 +67,9 @@ class PcMcuProtocolClient {
   int queryCurrentLoopParameters() =>
       _sendFrame(messageCodec.encodeQueryCurrentLoopParameters());
 
-  int setSpeedLoopParameters(PidParameters parameters) =>
-      _sendFrame(messageCodec.encodeSetSpeedLoopParameters(parameters));
-
-  int setCurrentLoopParameters(CurrentLoopParameters parameters) =>
-      _sendFrame(messageCodec.encodeSetCurrentLoopParameters(parameters));
-
   int rebootMcu() => _sendFrame(messageCodec.encodeRebootMcu());
 
   int queryMotorLimits() => _sendFrame(messageCodec.encodeQueryMotorLimits());
-
-  int setMotorLimits(MotorLimits limits) =>
-      _sendFrame(messageCodec.encodeSetMotorLimits(limits));
 
   int queryDipSwitchId() => _sendFrame(messageCodec.encodeQueryDipSwitchId());
 
@@ -120,6 +114,9 @@ class PcMcuProtocolClient {
   void _handleConnectionChanged() {
     final isConnected = _serialService.isConnected;
     if (isConnected != _wasConnected) {
+      // 丢弃旧连接在异步 Stream 中等待投递的字节。
+      unawaited(_serialSubscription.cancel());
+      _listenBytes();
       // 断开时立即清掉旧半帧和旧发送队列，避免重连后混入上一次会话的数据。
       // 不等新读取器启动后再清理，以免误删新连接刚收到的首段数据。
       if (!isConnected) {
@@ -131,19 +128,34 @@ class PcMcuProtocolClient {
   }
 
   /// 完整帧先进入有序队列，实际写入由后台事件循环稍后执行。
-  int _sendFrame(Uint8List frame) {
+  int _sendFrame(Uint8List frame) => _sendFrames([frame]);
+
+  /// 全部编码和容量检查通过后才修改队列；不保证 MCU 端原子执行。
+  int writeTuneParameters({
+    required PidParameters speedLoop,
+    required CurrentLoopParameters currentLoop,
+    required MotorLimits motorLimits,
+  }) => _sendFrames([
+    messageCodec.encodeSetSpeedLoopParameters(speedLoop),
+    messageCodec.encodeSetCurrentLoopParameters(currentLoop),
+    messageCodec.encodeSetMotorLimits(motorLimits),
+    messageCodec.encodeQuerySpeedLoopParameters(),
+    messageCodec.encodeQueryCurrentLoopParameters(),
+    messageCodec.encodeQueryMotorLimits(),
+  ]);
+
+  int _sendFrames(List<Uint8List> frames) {
     if (_isDisposed || !_serialService.isConnected) {
       throw StateError('串口没有连接');
     }
-    // 驱动持续无法接收数据时拒绝继续积压，避免待发送内容无限占用内存。
-    if (_queuedBytes + frame.length > 64 * 1024) {
+    final length = frames.fold<int>(0, (sum, frame) => sum + frame.length);
+    if (_queuedBytes + length > 64 * 1024) {
       throw StateError('串口发送队列已满');
     }
-    _outgoing.addLast(frame);
-    _queuedBytes += frame.length;
+    _outgoing.addAll(frames);
+    _queuedBytes += length;
     _scheduleWrite(Duration.zero);
-    // 返回值表示已经入队的长度；实际发送字节数/帧数在真正写入时再统计。
-    return frame.length;
+    return length;
   }
 
   // ??= 确保同一时刻只有一个待执行的发送定时器，多个命令可以共用它。
@@ -168,9 +180,6 @@ class PcMcuProtocolClient {
           // 保留帧与偏移，5 ms 后再试；不在 while 中空转等待，也不丢弃帧尾。
           _scheduleWrite(const Duration(milliseconds: 5));
           return;
-        }
-        if (written < 0 || written > remaining.length) {
-          throw StateError('Serial write returned invalid length: $written');
         }
         _writeOffset += written;
         _queuedBytes -= written;

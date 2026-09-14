@@ -118,7 +118,7 @@ class PcMcuMessageCodec {
   }
 
   Uint8List encodeMotorControl(MotorControlCommand command) {
-    _checkInt16(command.targetSpeedRpm, 'targetSpeedRpm');
+    validateTargetSpeedRpm(command.targetSpeedRpm);
     final payload = ByteData(3)
       ..setUint8(0, command.enabled ? 1 : 0)
       ..setInt16(1, command.targetSpeedRpm, Endian.big);
@@ -244,12 +244,6 @@ class PcMcuMessageCodec {
       );
     }
     return raw;
-  }
-
-  void _checkInt16(int value, String fieldName) {
-    if (value < -0x8000 || value > 0x7FFF) {
-      throw RangeError.range(value, -0x8000, 0x7FFF, fieldName);
-    }
   }
 
   String _hex(int value) =>

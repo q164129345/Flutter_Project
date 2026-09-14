@@ -12,7 +12,7 @@ class TimestampedSample<T> {
 /// 某一时刻的业务显示快照，只包含数据，不包含串口、订阅或定时器。
 ///
 /// 后台负责时间对齐和历史容量限制，只有 UI 请求时才整理并传回快照。
-/// 字段不重新赋值，后台生成的历史列表也不可修改，避免 UI 改动后台采样结果。
+/// 字段不重新赋值，不携带后台历史列表，避免周期复制历史。
 class FocSnapshot {
   const FocSnapshot({
     this.isConnected = false,
@@ -36,11 +36,6 @@ class FocSnapshot {
     this.motorLimits,
     this.dipSwitchId,
     this.externalFlashId,
-    this.speedHistory = const [],
-    this.dqHistory = const [],
-    this.currentHistory = const [],
-    this.hallHistory = const [],
-    this.logs = const [],
   });
 
   // 会话状态与最近通信情况；尚未收到对应数据时，可空字段保持 null。
@@ -67,10 +62,4 @@ class FocSnapshot {
   final MotorLimitsMessage? motorLimits;
   final DipSwitchIdMessage? dipSwitchId;
   final ExternalFlashIdMessage? externalFlashId;
-  // 有容量上限的历史副本，供曲线或日志组件显示；取快照不会清空后台历史。
-  final List<TimestampedSample<SpeedFeedbackMessage>> speedHistory;
-  final List<TimestampedSample<DqFeedbackMessage>> dqHistory;
-  final List<TimestampedSample<MotorCurrentMessage>> currentHistory;
-  final List<TimestampedSample<HallSensorStateMessage>> hallHistory;
-  final List<TimestampedSample<McuLogMessage>> logs;
 }

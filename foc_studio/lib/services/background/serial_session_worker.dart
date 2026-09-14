@@ -15,9 +15,6 @@ void serialSessionWorkerMain(SerialWorkerStart start) {
   final session = FocSession(transport);
   // requests 接收 UI 发来的操作；start.events 用于把结果发回 UI。
   final requests = ReceivePort();
-  // 只记录状态版本，不在每条消息到达时复制历史记录或通知页面。
-  var revision = 0;
-  session.addListener(() => revision++);
 
   // 连接/断开是低频事件，主动推送给 UI，使导航栏及时反映实际连接状态。
   // 携带统计值可展示新连接清零后的状态，或断开时保留的最后累计值。
@@ -62,8 +59,8 @@ void serialSessionWorkerMain(SerialWorkerStart start) {
         case SerialOperation.focSnapshot:
           // UI 传来上次看到的版本；版本相同就不生成包含历史列表的新快照。
           result = FocSnapshotResponse(
-            revision,
-            request.argument == revision ? null : session.snapshot(),
+            session.revision,
+            request.argument == session.revision ? null : session.snapshot(),
           );
         case SerialOperation.setMotorControl:
           final command = request.argument as MotorControlCommand;

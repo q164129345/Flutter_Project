@@ -2,11 +2,9 @@ import 'dart:async';
 
 import '../serial_statistics_snapshot.dart';
 
-import 'package:flutter/foundation.dart';
-
 /// 仅在串口 isolate 中累计数值，每秒采样速率。页面可见性不影响采样。
 /// UI 按需读取不可变快照，不直接订阅本对象。
-class SerialStatisticsAccumulator extends ChangeNotifier {
+class SerialStatisticsAccumulator {
   SerialStatisticsAccumulator({Duration Function()? elapsed})
     : _elapsed = elapsed ?? _monotonicClock();
 
@@ -96,7 +94,6 @@ class SerialStatisticsAccumulator extends ChangeNotifier {
     _lastReceivedBytes = 0;
     _lastSampleAt = _elapsed();
     _sampleTimer = Timer.periodic(sampleInterval, (_) => _sampleRates());
-    notifyListeners();
   }
 
   /// 断开后保留累计值，立即归零速率并停止采样。
@@ -105,7 +102,6 @@ class SerialStatisticsAccumulator extends ChangeNotifier {
     _sampleTimer = null;
     _sendBytesPerSecond = 0;
     _receiveBytesPerSecond = 0;
-    notifyListeners();
   }
 
   /// 后台独立采样：速率 = 自上次采样以来新增的字节数 / 实际经过秒数。
@@ -124,7 +120,6 @@ class SerialStatisticsAccumulator extends ChangeNotifier {
     _lastSentBytes = _sentByteCount;
     _lastReceivedBytes = _receivedByteCount;
     _lastSampleAt = now;
-    notifyListeners();
   }
 
   // 用闭包保留同一个 Stopwatch，之后每次调用都返回从它启动至今的时长。
@@ -133,9 +128,7 @@ class SerialStatisticsAccumulator extends ChangeNotifier {
     return () => clock.elapsed;
   }
 
-  @override
   void dispose() {
     _sampleTimer?.cancel();
-    super.dispose();
   }
 }
