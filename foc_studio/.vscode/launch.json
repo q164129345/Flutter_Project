@@ -1,0 +1,15 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "foc_studio Windows",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "deviceId": "windows",
+      // 避免后台串口 isolate 偶发停在 PauseStart，导致启动握手超时。
+      // 调试器附加前的启动代码可能不会命中断点；附加后仍可正常调试。
+      "toolArgs": ["--no-start-paused"]
+    }
+  ]
+}

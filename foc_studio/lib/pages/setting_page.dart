@@ -22,6 +22,9 @@ class _SettingPageState extends State<SettingPage> {
   // 下划线开头表示 Dart 库内私有成员；外部文件不能直接访问。
   // List<String> 表示列表中只允许存放字符串。
   List<String> _ports = [];
+  bool _scanning = false;
+  Object? _scanError;
+  int _scanGeneration = 0;
 
   // 当前选中的串口
   String? _selectedPort;
@@ -107,36 +110,40 @@ class _SettingPageState extends State<SettingPage> {
   Future<void> _refreshPorts() async {
     // 记住发起请求时的 Service，防止等待期间 Widget 被换成另一个 Service。
     final service = _serialService;
+    final generation = ++_scanGeneration;
+    setState(() {
+      _scanning = true;
+      _scanError = null;
+    });
     final connectedPort = service.connectedPortName;
-    if (connectedPort != null) {
-      // 已连接时直接显示当前端口，切回设置页无需再次调用驱动扫描串口。
-      setState(() {
-        _ports = [connectedPort];
-        _selectedPort = connectedPort;
-      });
+    List<String>? ports;
+    Object? scanError;
+    try {
+      // 已连接时复用当前端口；未连接时才扫描驱动。
+      ports = connectedPort != null
+          ? [connectedPort]
+          : await service.getAvailablePorts();
+    } catch (e) {
+      scanError = e;
+    }
+
+    // 只应用当前页面最新一次扫描的结果，成功与失败共用一次状态更新。
+    if (!mounted ||
+        service != _serialService ||
+        generation != _scanGeneration) {
       return;
     }
-    try {
-      final ports = await service.getAvailablePorts();
-      // await 期间用户可能已切页；卸载后禁止 setState，也不能应用旧 Service 的回复。
-      if (!mounted || service != _serialService) return;
-      String? selectedPort = _selectedPort;
-
-      // 刷新后原串口可能已被拔出。如果原选择仍有效就保留，
-      // 否则选择列表第一项；列表为空时使用 null。
-      if (!ports.contains(selectedPort)) {
-        selectedPort = ports.isNotEmpty ? ports.first : null;
+    final scannedPorts = ports;
+    setState(() {
+      _scanning = false;
+      _scanError = scanError;
+      if (scannedPorts == null) return;
+      _ports = scannedPorts;
+      if (!scannedPorts.contains(_selectedPort)) {
+        _selectedPort = scannedPorts.firstOrNull;
       }
-
-      // 先在局部变量中把新状态计算完，再一次性放入 setState。
-      setState(() {
-        _ports = ports;
-        _selectedPort = selectedPort;
-      });
-    } catch (e) {
-      if (!mounted || service != _serialService) return;
-      setState(() => _status = '扫描串口失败：$e');
-    }
+      _status = _connectionStatusText;
+    });
   }
 
   // =========================
@@ -272,7 +279,13 @@ class _SettingPageState extends State<SettingPage> {
                           // 让下拉框内容使用父组件提供的全部宽度，长串口名才有空间显示。
                           isExpanded: true,
                           decoration: _fieldDecoration('串口'),
-                          hint: const Text('未检测到串口'),
+                          hint: Text(
+                            _scanning
+                                ? '正在扫描串口…'
+                                : _scanError != null
+                                ? '扫描失败，请刷新重试'
+                                : '未检测到串口',
+                          ),
 
                           // 将 List<String> 转换成下拉菜单需要的
                           // List<DropdownMenuItem<String>>。
@@ -379,6 +392,14 @@ class _SettingPageState extends State<SettingPage> {
 
                 // Dart 集合中的 if：只有 _hasError 为 true 时，
                 // 这个 Padding 和错误文字才会被加入 children 列表。
+                if (_scanError != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Text(
+                      '扫描串口失败：$_scanError',
+                      style: TextStyle(color: colorScheme.error),
+                    ),
+                  ),
                 if (_hasError)
                   Padding(
                     padding: const EdgeInsets.only(top: 10),

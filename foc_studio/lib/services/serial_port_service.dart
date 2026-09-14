@@ -18,7 +18,16 @@ export 'serial_connection_status.dart';
 /// 真正的串口读写、解包、统计和心跳运行在 serial-session isolate 中。
 /// UI 只接收连接状态和按需请求的快照，不接收原始串口字节。
 class SerialPortService extends ChangeNotifier {
-  SerialPortService() {
+  SerialPortService()
+    : this._(serialSessionWorkerMain, const Duration(seconds: 10));
+
+  @visibleForTesting
+  SerialPortService.forTesting({
+    required void Function(SerialWorkerStart) workerMain,
+    Duration scanTimeout = const Duration(seconds: 10),
+  }) : this._(workerMain, scanTimeout);
+
+  SerialPortService._(this._workerMain, this._scanTimeout) {
     // 统计面板开始/停止监听时，同步开始/停止向后台请求显示数据。
     statistics = SerialPortStatistics(onListeningChanged: _observeStatistics);
     // 即使页面尚未发起请求，启动失败也不会产生无人处理的 Future 错误。
@@ -32,6 +41,9 @@ class SerialPortService extends ChangeNotifier {
   // 这两个间隔只限制 UI 取快照的频率，不限制后台解包的频率。
   static const displayInterval = Duration(milliseconds: 50);
   static const statisticsInterval = Duration(seconds: 1);
+
+  final void Function(SerialWorkerStart) _workerMain;
+  final Duration _scanTimeout;
 
   // 三条独立通知通道：统计面板、操作按钮、业务数据显示。
   // 连接状态则通过本 Service 的 notifyListeners 通知导航栏等组件。
@@ -85,7 +97,7 @@ class SerialPortService extends ChangeNotifier {
   Future<void> _start() async {
     try {
       final isolate = await Isolate.spawn(
-        serialSessionWorkerMain,
+        _workerMain,
         SerialWorkerStart(_events.sendPort),
         debugName: 'serial-session',
         // 把后台未捕获异常和意外退出也送进同一个收件箱，避免界面假装仍在线。
@@ -176,7 +188,15 @@ class SerialPortService extends ChangeNotifier {
     if (_closing && operation != SerialOperation.shutdown) {
       throw StateError('串口服务已关闭');
     }
-    final port = await _ready.future;
+    final scanning = operation == SerialOperation.listPorts;
+    final watch = scanning ? (Stopwatch()..start()) : null;
+    // 扫描必须覆盖启动握手的等待，否则后台未就绪时刷新按钮会一直禁用。
+    final port = scanning
+        ? await _ready.future.timeout(
+            _scanTimeout,
+            onTimeout: () => throw TimeoutException('等待串口后台启动超时，请重试'),
+          )
+        : await _ready.future;
     // 等待启动期间也可能发生关闭，因此握手完成后需要再次检查状态。
     if (_workerFailure != null) throw _workerFailure!;
     if (_closing && operation != SerialOperation.shutdown) {
@@ -187,7 +207,17 @@ class SerialPortService extends ChangeNotifier {
     // 先登记等待者，再发请求，保证极快返回的回复也能找到对应 Future。
     _pending[id] = result;
     port.send(SerialWorkerRequest(id, operation, argument));
-    return result.future;
+    if (!scanning) return result.future;
+    try {
+      final remaining = _scanTimeout - watch!.elapsed;
+      return await result.future.timeout(
+        remaining.isNegative ? Duration.zero : remaining,
+        onTimeout: () => throw TimeoutException('串口扫描超时，后台未回复，请重试'),
+      );
+    } finally {
+      // 超时只结束等待，不能取消正在运行的本地调用；迟到回复按 id 丢弃。
+      _pending.remove(id);
+    }
   }
 
   /// 为扫描/连接/断开统一维护忙碌状态，供设置页暂时禁用相关按钮。
