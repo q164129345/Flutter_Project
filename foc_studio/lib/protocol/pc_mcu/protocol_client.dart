@@ -17,8 +17,26 @@ class PcMcuProtocolClient {
     this._serialService, {
     ProtocolFrameDecoder? frameDecoder,
     PcMcuMessageCodec? messageCodec,
+    this.writeRetryInterval = const Duration(milliseconds: 5),
+    this.writeDeadline = const Duration(seconds: 1),
+    Duration Function()? elapsed,
   }) : frameDecoder = frameDecoder ?? ProtocolFrameDecoder(),
-       messageCodec = messageCodec ?? const PcMcuMessageCodec() {
+       messageCodec = messageCodec ?? const PcMcuMessageCodec(),
+       _elapsed = elapsed ?? _monotonicClock() {
+    if (writeRetryInterval.isNegative) {
+      throw ArgumentError.value(
+        writeRetryInterval,
+        'writeRetryInterval',
+        'must not be negative',
+      );
+    }
+    if (writeDeadline <= Duration.zero) {
+      throw ArgumentError.value(
+        writeDeadline,
+        'writeDeadline',
+        'must be greater than zero',
+      );
+    }
     _wasConnected = _serialService.isConnected;
     _serialService.addListener(_handleConnectionChanged);
     _listenBytes();
@@ -35,6 +53,9 @@ class PcMcuProtocolClient {
   // 同一个解包器跟随整次连接，才能把多次接收中的半帧接起来。
   final ProtocolFrameDecoder frameDecoder;
   final PcMcuMessageCodec messageCodec;
+  final Duration writeRetryInterval;
+  final Duration writeDeadline;
+  final Duration Function() _elapsed;
   final StreamController<McuMessage> _messageController =
       StreamController<McuMessage>.broadcast();
 
@@ -48,6 +69,8 @@ class PcMcuProtocolClient {
   int _writeOffset = 0;
   // 队列中尚未交给系统的总字节数，用于限制积压内存。
   int _queuedBytes = 0;
+  // 队首帧第一次尝试写入的单调时间；超过截止时间仍未完成就熔断连接。
+  Duration? _headWriteStartedAt;
 
   Stream<McuMessage> get messages => _messageController.stream;
 
@@ -172,13 +195,23 @@ class PcMcuProtocolClient {
     try {
       while (_outgoing.isNotEmpty && budget > 0) {
         final frame = _outgoing.first;
+        _headWriteStartedAt ??= _elapsed();
+        if (_headWriteExpired()) {
+          _failWriteQueue(
+            TimeoutException(
+              '串口发送超时：一帧在 ${writeDeadline.inMilliseconds} ms 内未完成',
+              writeDeadline,
+            ),
+          );
+          return;
+        }
         // sublistView 只创建剩余部分的视图，重试时不复制整帧。
         final remaining = Uint8List.sublistView(frame, _writeOffset);
         final written = _serialService.sendBytes(remaining);
         if (written == 0) {
           // 非阻塞写返回 0 通常表示系统发送缓冲区暂满，不是帧无效。
           // 保留帧与偏移，5 ms 后再试；不在 while 中空转等待，也不丢弃帧尾。
-          _scheduleWrite(const Duration(milliseconds: 5));
+          _scheduleWrite(writeRetryInterval);
           return;
         }
         _writeOffset += written;
@@ -188,6 +221,7 @@ class PcMcuProtocolClient {
           // 整帧都已被系统接受才弹出队列并计一帧，短写重试不会重复计数。
           _outgoing.removeFirst();
           _writeOffset = 0;
+          _headWriteStartedAt = null;
           _serialService.statistics.recordSentFrame();
         }
       }
@@ -198,6 +232,19 @@ class PcMcuProtocolClient {
     }
   }
 
+  bool _headWriteExpired() {
+    final startedAt = _headWriteStartedAt;
+    return startedAt != null && _elapsed() - startedAt >= writeDeadline;
+  }
+
+  void _failWriteQueue(Object error) {
+    _clearWrites();
+    _serialService.disconnectAfterWriteStall(error);
+    if (!_isDisposed) {
+      _messageController.addError(error, StackTrace.current);
+    }
+  }
+
   /// 断开、写入失败或销毁时统一停止重试，旧命令不能带到下一次连接。
   void _clearWrites() {
     _writeTimer?.cancel();
@@ -205,6 +252,12 @@ class PcMcuProtocolClient {
     _outgoing.clear();
     _writeOffset = 0;
     _queuedBytes = 0;
+    _headWriteStartedAt = null;
+  }
+
+  static Duration Function() _monotonicClock() {
+    final clock = Stopwatch()..start();
+    return () => clock.elapsed;
   }
 
   void dispose() {

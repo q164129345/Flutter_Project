@@ -21,6 +21,10 @@ class SerialTransport extends ChangeNotifier {
   final SerialStatisticsAccumulator statistics;
 
   SerialPort? _port;
+  // libserialport 的 SerialPort 会保留通过 config setter 传入的对象，并在
+  // SerialPort.dispose() 时一并释放。这里单独记录它，只用于 Windows 暂不释放
+  // SerialPort 对象的兼容路径，避免配置对象也随之泄漏。
+  SerialPortConfig? _portConfig;
 
   // 保存当前连接状态。程序刚启动时还没有连接，所以初始值为 disconnected。
   SerialPortConnectionStatus _connectionStatus =
@@ -114,8 +118,10 @@ class SerialTransport extends ChangeNotifier {
         throw Exception('打开串口失败，串口可能被占用');
       }
 
-      // SerialPortConfig 包含底层资源，用完后也需要 dispose()。
+      // SerialPortConfig 包含底层资源。传给 port.config 后，SerialPort 会保留
+      // 该对象并在自身 dispose 时释放，不能在赋值后立即重复 dispose。
       final config = SerialPortConfig();
+      var configTransferredToPort = false;
 
       try {
         // 波特率
@@ -130,10 +136,14 @@ class SerialTransport extends ChangeNotifier {
         // 不使用流控
         config.setFlowControl(SerialPortFlowControl.none);
 
-        // 应用配置
+        // setter 内部会保存 config 引用；先标记所有权转移，确保 setter 自身抛错时
+        // 后续也只通过端口清理路径释放一次。
+        _portConfig = config;
+        configTransferredToPort = true;
         port.config = config;
       } finally {
-        config.dispose();
+        // 只有尚未交给端口时才由本作用域释放。
+        if (!configTransferredToPort) config.dispose();
       }
 
       // 配置成功以后，才保存这个串口对象
@@ -251,11 +261,22 @@ class SerialTransport extends ChangeNotifier {
       }
       statistics.recordSentBytes(written);
       return written;
-    } on SerialPortError catch (error) {
-      // 参数/协议类异常不在这里处理；只有底层串口 I/O 错误才判定传输中断。
+    } catch (error) {
+      // 数据在进入这里前已经过协议编码校验，因此 write 抛出的任何异常都意味着
+      // 当前传输不再可信。统一断开，不能只清空上层队列后继续显示“已连接”。
       _disconnectAfterTransportFailure(port, error);
       rethrow;
     }
+  }
+
+  /// 发送队列检测到长期无进展时结束当前连接。
+  ///
+  /// 这与一次 write 返回 0 不同：短暂的 0 是合法背压；连续超过发送截止时间
+  /// 则意味着控制命令已经失去实时性，继续维持 connected 会误导上层。
+  void disconnectAfterWriteStall(Object error) {
+    final port = _port;
+    if (port == null) return;
+    _disconnectAfterTransportFailure(port, error);
   }
 
   /// 停止串口接收
@@ -283,6 +304,8 @@ class SerialTransport extends ChangeNotifier {
   /// 三种退出路径共用清理；先使旧回调失效，再关闭本地资源。
   void _closePort(SerialPort? port) {
     _port = null;
+    final portConfig = _portConfig;
+    _portConfig = null;
     _connectedPortName = null;
     _connectedBaudRate = null;
     try {
@@ -296,19 +319,22 @@ class SerialTransport extends ChangeNotifier {
         } catch (error) {
           debugPrint('关闭串口失败：$error');
         } finally {
-          _releasePortObject(port);
+          _releasePortObject(port, portConfig);
         }
       }
     }
   }
 
   /// 释放 SerialPort 对象
-  void _releasePortObject(SerialPort port) {
+  void _releasePortObject(SerialPort port, SerialPortConfig? portConfig) {
     // flutter_libserialport 在 Windows 下
     // dispose() 当前可能导致程序崩溃。
     //
     // 所以 Windows 暂时不要调用。
     if (Platform.isWindows) {
+      // 端口对象暂不释放时，它也不会替我们释放缓存的配置对象。
+      // 串口已经 close，后续不会再读取该 config，可以在这里单独释放。
+      portConfig?.dispose();
       return;
     }
 

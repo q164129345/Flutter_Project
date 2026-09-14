@@ -95,14 +95,7 @@ class PcMcuMessageCodec {
         ),
       ),
       PcMcuCommand.logMessage => _decodeLogMessage(payload),
-      PcMcuCommand.hallSensorState => HallSensorStateMessage(
-        hallA: _decodeBinaryFlag(payload[0], 'Hall A'),
-        hallB: _decodeBinaryFlag(payload[1], 'Hall B'),
-        hallC: _decodeBinaryFlag(payload[2], 'Hall C'),
-        hallState: payload[3],
-        electricSector: data.getInt8(4),
-        mcuTickMs: data.getUint32(5, Endian.big),
-      ),
+      PcMcuCommand.hallSensorState => _decodeHallSensorState(payload, data),
       PcMcuCommand.absoluteSensorInfo => AbsoluteSensorInfoMessage(
         pulseCounter: data.getUint32(0, Endian.big),
         countsPerRevolution: data.getUint32(4, Endian.big),
@@ -219,6 +212,38 @@ class PcMcuMessageCodec {
     return McuLogMessage(
       level: level,
       text: ascii.decode(payload.sublist(1), allowInvalid: true),
+    );
+  }
+
+  HallSensorStateMessage _decodeHallSensorState(
+    Uint8List payload,
+    ByteData data,
+  ) {
+    final hallA = _decodeBinaryFlag(payload[0], 'Hall A');
+    final hallB = _decodeBinaryFlag(payload[1], 'Hall B');
+    final hallC = _decodeBinaryFlag(payload[2], 'Hall C');
+    final hallState = payload[3];
+    final electricSector = data.getInt8(4);
+    final encodedState = (hallA ? 4 : 0) | (hallB ? 2 : 0) | (hallC ? 1 : 0);
+    if (hallState != encodedState) {
+      throw FormatException(
+        'hall_state $hallState does not match Hall A/B/C ($encodedState)',
+      );
+    }
+    final validState = hallState >= 1 && hallState <= 6;
+    final validSector = electricSector >= 0 && electricSector <= 5;
+    if (validState != validSector || (!validState && electricSector != -1)) {
+      throw FormatException(
+        'electric_sector $electricSector is invalid for hall_state $hallState',
+      );
+    }
+    return HallSensorStateMessage(
+      hallA: hallA,
+      hallB: hallB,
+      hallC: hallC,
+      hallState: hallState,
+      electricSector: electricSector,
+      mcuTickMs: data.getUint32(5, Endian.big),
     );
   }
 
