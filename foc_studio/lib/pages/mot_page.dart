@@ -426,45 +426,38 @@ class _MonitorPanel extends StatelessWidget {
     final motorFields = [
       _MonitorField(
         '软件版本',
-        '(main.sub.mini.fixed)',
         value: snapshot.softwareVersion?.displayName,
       ),
-      _MonitorField('电机类型', '(0~6)', value: _motorTypeName(snapshot.motorType)),
-      _MonitorField('拨码ID', '(0~7)', value: snapshot.dipSwitchId?.id),
+      _MonitorField('电机类型', value: _motorTypeName(snapshot.motorType)),
+      _MonitorField('拨码ID', value: snapshot.dipSwitchId?.id),
       _MonitorField(
         '使能状态',
-        '(0/1)',
         value: snapshot.reportedEnableState == null
             ? null
             : (snapshot.reportedEnableState!.enabled ? '1' : '0'),
       ),
       _MonitorField(
         '转速',
-        '(-3000~3000)',
         unit: 'RPM',
         value: snapshot.latestSpeed?.value.rpm,
       ),
       _MonitorField(
         '电流',
-        '(0~30.0)',
         unit: 'A',
         value: _number(snapshot.latestCurrent?.value.amperes),
       ),
       _MonitorField(
         '电机温度',
-        '(0.1 °C)',
         unit: '°C',
         value: _number(snapshot.motorTemperature?.celsius),
       ),
       _MonitorField(
         'MOS温度',
-        '(0.1 °C)',
         unit: '°C',
         value: _number(snapshot.mosTemperature?.celsius),
       ),
       _MonitorField(
         '错误码',
-        '(uint16)',
         value: _errorCodeText(snapshot.errorCode?.code),
       ),
     ];
@@ -472,25 +465,21 @@ class _MonitorPanel extends StatelessWidget {
     final dqFields = [
       _MonitorField(
         'Iq电流分量',
-        '(-32.768~32.767)',
         unit: 'A',
         value: _number(dq?.iq),
       ),
       _MonitorField(
         'Id电流分量',
-        '(-32.768~32.767)',
         unit: 'A',
         value: _number(dq?.id),
       ),
       _MonitorField(
         'Uq电压分量',
-        '(-32.768~32.767)',
         unit: 'V',
         value: _number(dq?.uq),
       ),
       _MonitorField(
         'Ud电压分量',
-        '(-32.768~32.767)',
         unit: 'V',
         value: _number(dq?.ud),
       ),
@@ -540,10 +529,9 @@ class _MonitorPanel extends StatelessWidget {
 /// label 是名称，hint 是范围或精度提示，unit 是单位，value 是显示字符串。
 /// 所有成员为 final，创建后不重新赋值；未传 value 时默认显示“--”。
 class _MonitorField {
-  const _MonitorField(this.label, this.hint, {this.unit = '', this.value});
+  const _MonitorField(this.label, {this.unit = '', this.value});
 
   final String label;
-  final String hint;
   final String unit;
   final Object? value;
 
