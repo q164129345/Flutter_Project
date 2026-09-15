@@ -567,17 +567,8 @@ class _MonitorRow extends StatelessWidget {
           // 它与 Expanded 的区别是：不强制把分配到的剩余宽度全部占满。
           Flexible(
             child: SizedBox(
-              width: 120 * textScale,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(field.label),
-                  Text(
-                    field.hint,
-                    style: const TextStyle(fontWeight: FontWeight.w600, color: _mutedColor),
-                  ),
-                ],
-              ),
+              width: 100 * textScale, // 左侧标签区域的期望宽度
+              child: Text(field.label),
             ),
           ),
           // Semantics 给屏幕阅读器提供说明。excludeSemantics 避免再重复朗读
