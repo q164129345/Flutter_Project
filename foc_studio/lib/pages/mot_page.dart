@@ -20,7 +20,7 @@ const _valueColor = Color(0xFF1688CB);
 String? _number(double? value) => value?.toStringAsFixed(2);
 
 String? _errorCodeText(int? code) =>
-    code == null ? null : '0x${code.toRadixString(16).padLeft(4, '0')} ($code)';
+    code == null ? null : '0x${code.toRadixString(16).padLeft(4, '0')}';
 
 String? _motorTypeName(MotorTypeMessage? message) {
   if (message == null) return null;
