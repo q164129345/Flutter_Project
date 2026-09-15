@@ -11,10 +11,10 @@ import '../protocol/pc_mcu/messages/configuration_messages.dart';
 // 页面共用的配色集中在这里，调整外观时不用逐个修改组件。
 // 0xFFRRGGBB 中 FF 表示完全不透明，后六位分别表示红、绿、蓝。
 // 名称前的下划线表示 Dart 库内私有，本文件中的组件都可以使用。
-const _pageBackground = Color(0xFFEDF0F1);
-const _panelBorder = Color(0xFFBBC4CA);
-const _labelColor = Color(0xFF234F75);
-const _mutedColor = Color(0xFF8498A6);
+const _pageBackground = Color(0xFFFFF7FF);
+const _panelBorder = Color(0xFF7B7780);
+const _labelColor = Color(0xFF625E66);
+const _mutedColor = Color(0xFF85818A);
 const _valueColor = Color(0xFF1688CB);
 
 String? _number(double? value) => value?.toStringAsFixed(2);
@@ -194,55 +194,64 @@ class _MotPageState extends State<MotPage> {
   }
 }
 
-/// 三个区域共用的外壳：白色背景、圆角边框、居中标题和内容间距。
-class _Panel extends StatelessWidget {
-  const _Panel({
+/// 三个区域共用的外壳。
+///
+/// Container 绘制边框和内容背景；Stack 让居中标题覆盖顶部边框，形成类似
+/// fieldset 的标题缺口。MOT 页面只使用三个该组件实例，分别对应控制、监控和故障区。
+class _StackPanel extends StatelessWidget {
+  const _StackPanel({
     required this.title,
     required this.child,
-    this.padding = const EdgeInsets.fromLTRB(15, 6, 15, 12),
-    this.headerLeading,
+    this.padding = const EdgeInsets.fromLTRB(15, 18, 15, 12),
+    this.minHeight,
   });
 
   final String title;
-  // child 接收任意组件，因此同一个外壳可以装输入框、监控表或故障列表。
   final Widget child;
-  // fromLTRB 的参数顺序为左、上、右、下；调用者可覆盖默认内边距。
   final EdgeInsets padding;
-  // Widget? 允许为 null；目前只有故障区传入标题左侧的“--”。
-  final Widget? headerLeading;
+  final double? minHeight;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: padding,
-      decoration: BoxDecoration(
-        color: Color.fromARGB(255, 250, 250, 242),
-        border: Border.all(color: _panelBorder),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Stack 将左侧状态和居中标题叠放在同一行，避免左侧文字把标题推偏。
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              // 集合中的 if：只有传入了组件，才把它加入 children 列表。
-              if (headerLeading != null)
-                Align(alignment: Alignment.centerLeft, child: headerLeading),
-              Text(
+    return Stack(
+      key: ValueKey('mot-panel-$title'),
+      clipBehavior: Clip.none,
+      children: [
+        // 边框下移，给标题留出覆盖边线的位置。
+        Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(top: 10),
+          constraints: minHeight == null
+              ? null
+              : BoxConstraints(minHeight: math.max(0, minHeight! - 10)),
+          padding: padding,
+          decoration: BoxDecoration(
+            color: _pageBackground,
+            border: Border.all(color: _panelBorder, width: 1.5),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: child,
+        ),
+        // 标题底色与页面、面板相同，所以能自然遮住一段顶部边框。
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: Align(
+            child: Container(
+              color: _pageBackground,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: Text(
                 title,
                 style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                 ),
               ),
-            ],
+            ),
           ),
-          const SizedBox(height: 8),
-          child,
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -364,15 +373,8 @@ class _ControlPanel extends StatelessWidget {
       ],
     );
 
-    return _Panel(
+    return _StackPanel(
       title: '控制',
-      headerLeading: Text(
-        connected ? '已连接' : '未连接',
-        style: TextStyle(
-          color: connected ? Colors.green.shade700 : _mutedColor,
-          fontSize: 12,
-        ),
-      ),
       // 窄窗口上下排列，宽窗口左右排列；两种布局复用上面创建的组件。
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -424,10 +426,7 @@ class _MonitorPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final motorFields = [
-      _MonitorField(
-        '软件版本',
-        value: snapshot.softwareVersion?.displayName,
-      ),
+      _MonitorField('软件版本', value: snapshot.softwareVersion?.displayName),
       _MonitorField('电机类型', value: _motorTypeName(snapshot.motorType)),
       _MonitorField('拨码ID', value: snapshot.dipSwitchId?.id),
       _MonitorField(
@@ -436,11 +435,7 @@ class _MonitorPanel extends StatelessWidget {
             ? null
             : (snapshot.reportedEnableState!.enabled ? '1' : '0'),
       ),
-      _MonitorField(
-        '转速',
-        unit: 'RPM',
-        value: snapshot.latestSpeed?.value.rpm,
-      ),
+      _MonitorField('转速', unit: 'RPM', value: snapshot.latestSpeed?.value.rpm),
       _MonitorField(
         '电流',
         unit: 'A',
@@ -456,33 +451,14 @@ class _MonitorPanel extends StatelessWidget {
         unit: '°C',
         value: _number(snapshot.mosTemperature?.celsius),
       ),
-      _MonitorField(
-        '错误码',
-        value: _errorCodeText(snapshot.errorCode?.code),
-      ),
+      _MonitorField('错误码', value: _errorCodeText(snapshot.errorCode?.code)),
     ];
     final dq = snapshot.latestDq?.value;
     final dqFields = [
-      _MonitorField(
-        'Iq电流分量',
-        unit: 'A',
-        value: _number(dq?.iq),
-      ),
-      _MonitorField(
-        'Id电流分量',
-        unit: 'A',
-        value: _number(dq?.id),
-      ),
-      _MonitorField(
-        'Uq电压分量',
-        unit: 'V',
-        value: _number(dq?.uq),
-      ),
-      _MonitorField(
-        'Ud电压分量',
-        unit: 'V',
-        value: _number(dq?.ud),
-      ),
+      _MonitorField('Iq电流分量', unit: 'A', value: _number(dq?.iq)),
+      _MonitorField('Id电流分量', unit: 'A', value: _number(dq?.id)),
+      _MonitorField('Uq电压分量', unit: 'V', value: _number(dq?.uq)),
+      _MonitorField('Ud电压分量', unit: 'V', value: _number(dq?.ud)),
     ];
 
     // 局部函数把一组字段转换为一列组件。=> 是只有一个返回表达式的函数简写。
@@ -495,32 +471,30 @@ class _MonitorPanel extends StatelessWidget {
       ],
     );
 
-    return ConstrainedBox(
+    return _StackPanel(
+      title: '监控界面',
       // 只给最小高度，不固定最大高度，保证窄屏或大字号时内容仍能完整显示。
-      constraints: BoxConstraints(minHeight: minHeight),
-      child: _Panel(
-        title: '监控界面',
-        child: twoColumns
-            ? Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 左组固定预留宽度，右组使用剩余空间；两组都从顶部开始排列。
-                  SizedBox(
-                    width: 280 * textScale,
-                    child: fieldColumn(motorFields),
-                  ),
-                  Expanded(child: fieldColumn(dqFields)),
-                ],
-              )
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  fieldColumn(motorFields),
-                  const SizedBox(height: 12),
-                  fieldColumn(dqFields),
-                ],
-              ),
-      ),
+      minHeight: minHeight,
+      child: twoColumns
+          ? Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 左组固定预留宽度，右组使用剩余空间；两组都从顶部开始排列。
+                SizedBox(
+                  width: 280 * textScale,
+                  child: fieldColumn(motorFields),
+                ),
+                Expanded(child: fieldColumn(dqFields)),
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                fieldColumn(motorFields),
+                const SizedBox(height: 12),
+                fieldColumn(dqFields),
+              ],
+            ),
     );
   }
 }
@@ -638,22 +612,10 @@ class _FaultPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final tileWidth = (contentWidth - 18 - (columns - 1) * 8) / columns;
     final errorCode = snapshot.errorCode?.code;
-    final codeText = errorCode == null
-        ? '--'
-        : '0x${errorCode.toRadixString(16).padLeft(4, '0')}';
 
-    return _Panel(
+    return _StackPanel(
       title: '电机故障信息',
-      padding: const EdgeInsets.all(8),
-      headerLeading: Tooltip(
-        message: errorCode == null ? '尚未收到故障数据' : '故障码 $codeText',
-        child: Text(
-          codeText,
-          style: TextStyle(
-            color: errorCode == null ? _mutedColor : _labelColor,
-          ),
-        ),
-      ),
+      padding: const EdgeInsets.fromLTRB(8, 18, 8, 8),
       child: Wrap(
         spacing: 8,
         runSpacing: 4,
