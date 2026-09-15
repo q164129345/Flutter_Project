@@ -248,6 +248,7 @@ class FocSession {
     _sendMotorControl();
     querySoftwareVersion();
     queryMotorType();
+    queryDipSwitchId();
 
     _heartbeatTimer = Timer.periodic(
       heartbeatInterval,

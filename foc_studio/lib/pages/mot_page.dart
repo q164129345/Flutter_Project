@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 // TextInputFormatter 来自 services，用来限制输入框接受的文字。
 import 'package:flutter/services.dart';
 
+import '../controllers/foc_controller.dart';
+import '../protocol/pc_mcu/messages/configuration_messages.dart';
+
 // 页面共用的配色集中在这里，调整外观时不用逐个修改组件。
 // 0xFFRRGGBB 中 FF 表示完全不透明，后六位分别表示红、绿、蓝。
 // 名称前的下划线表示 Dart 库内私有，本文件中的组件都可以使用。
@@ -14,17 +17,94 @@ const _labelColor = Color(0xFF234F75);
 const _mutedColor = Color(0xFF8498A6);
 const _valueColor = Color(0xFF1688CB);
 
-/// MOT 的静态界面。当前不订阅串口，也不发送电机控制命令。
-///
-/// 阅读顺序：MotPage 决定整体布局，_Panel 提供白色分区外壳，
-/// _ControlPanel、_MonitorPanel、_FaultPanel 分别绘制三个区域。
-/// 页面本身没有需要 setState 更新的业务状态，因此使用 StatelessWidget；
-/// TextField 内部仍会自行管理用户正在输入的文字。
-class MotPage extends StatelessWidget {
-  const MotPage({super.key});
+String? _number(double? value) => value?.toStringAsFixed(2);
+
+String? _errorCodeText(int? code) =>
+    code == null ? null : '0x${code.toRadixString(16).padLeft(4, '0')} ($code)';
+
+String? _motorTypeName(MotorTypeMessage? message) {
+  if (message == null) return null;
+  final name = switch (message.type) {
+    MotorType.sideBrushZhongling => '边刷(中菱)',
+    MotorType.rollerBrush => '滚刷',
+    MotorType.newSideBrush11050 => '新边刷(11050)',
+    MotorType.zhonglingHubMotor => '中菱轮毂电机',
+    MotorType.cutter08Nm => '0.8N割刀电机',
+    MotorType.frxCutter04Nm => 'frx_0.4N割刀电机',
+    MotorType.unknown || null => '未知',
+  };
+  return '${message.rawType} ($name)';
+}
+
+/// MOT 页面只在挂载期间监听控制器。
+/// MainPage 只把当前导航页挂到树上，因此这里的 listener 生命周期就是
+/// MOT 的可见生命周期；后台 FocSession 不受切页影响，仍持续解包。
+class MotPage extends StatefulWidget {
+  const MotPage({required this.controller, super.key});
+
+  final FocController controller;
+
+  @override
+  State<MotPage> createState() => _MotPageState();
+}
+
+class _MotPageState extends State<MotPage> {
+  late final TextEditingController _targetSpeedController;
+  String? _commandError;
+  bool _commandPending = false;
+
+  FocController get controller => widget.controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _targetSpeedController = TextEditingController();
+    controller.addListener(_handleControllerChanged);
+  }
+
+  void _handleControllerChanged() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _setMotorControl(bool enabled) async {
+    if (_commandPending || !controller.isConnected) return;
+    final targetSpeed = int.tryParse(_targetSpeedController.text.trim());
+    if (targetSpeed == null || targetSpeed < -0x8000 || targetSpeed > 0x7fff) {
+      setState(() => _commandError = '请输入有效的目标转速');
+      return;
+    }
+
+    setState(() {
+      _commandPending = true;
+      _commandError = null;
+    });
+    try {
+      final accepted = await controller.setMotorControl(
+        enabled: enabled,
+        targetSpeedRpm: targetSpeed,
+      );
+      if (!mounted) return;
+      setState(() {
+        _commandError = accepted ? null : '命令发送失败，请检查串口连接';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _commandError = '命令失败：$error');
+    } finally {
+      if (mounted) setState(() => _commandPending = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    controller.removeListener(_handleControllerChanged);
+    _targetSpeedController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final snapshot = controller.state;
     // 以 14 号字实际缩放后的大小估算布局比例，例如双倍字号得到 2。
     // 这里只把布局比例下限设为 1，不会改变系统对文字本身的缩放。
     // 后面同时放大列宽和换行阈值，为较大的文字预留空间。
@@ -79,19 +159,30 @@ class MotPage extends StatelessWidget {
                 // stretch 让三个分区横向占满可用宽度。
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _ControlPanel(compact: compactControls),
+                  _ControlPanel(
+                    compact: compactControls,
+                    targetSpeedController: _targetSpeedController,
+                    connected: controller.isConnected,
+                    enabled: controller.isConnected && !_commandPending,
+                    commandPending: _commandPending,
+                    errorText: _commandError,
+                    onStart: () => _setMotorControl(true),
+                    onStop: () => _setMotorControl(false),
+                  ),
                   const SizedBox(height: 8),
                   // 只限制最小高度，单列或大字号时允许内容自然撑高。
                   _MonitorPanel(
                     twoColumns: twoColumns,
                     textScale: textScale,
                     minHeight: monitorMinHeight,
+                    snapshot: snapshot,
                   ),
                   const SizedBox(height: 8),
                   _FaultPanel(
                     columns: faultColumns,
                     contentWidth: contentWidth,
                     textScale: textScale,
+                    snapshot: snapshot,
                   ),
                 ],
               ),
@@ -156,11 +247,27 @@ class _Panel extends StatelessWidget {
   }
 }
 
-/// 控制区只负责输入和按钮外观，尚未调用串口或 FocController。
+/// 控制区负责输入校验，并把异步命令交给页面状态执行。
 class _ControlPanel extends StatelessWidget {
-  const _ControlPanel({required this.compact});
+  const _ControlPanel({
+    required this.compact,
+    required this.targetSpeedController,
+    required this.connected,
+    required this.enabled,
+    required this.commandPending,
+    required this.errorText,
+    required this.onStart,
+    required this.onStop,
+  });
 
   final bool compact;
+  final TextEditingController targetSpeedController;
+  final bool connected;
+  final bool enabled;
+  final bool commandPending;
+  final String? errorText;
+  final VoidCallback onStart;
+  final VoidCallback onStop;
 
   @override
   Widget build(BuildContext context) {
@@ -177,6 +284,9 @@ class _ControlPanel extends StatelessWidget {
           child: TextField(
             // ValueKey 为输入框提供稳定标识，便于定位组件和编写测试。
             key: const ValueKey('mot-target-speed'),
+            controller: targetSpeedController,
+            // 未连接时仍允许先填写目标值；只有已连接时才开放发送按钮。
+            enabled: !commandPending,
             // keyboardType 只提示平台使用数字键盘，不能阻止粘贴非法文字，
             // 所以还需要下面的 inputFormatters 检查实际输入。
             keyboardType: const TextInputType.numberWithOptions(signed: true),
@@ -225,64 +335,74 @@ class _ControlPanel extends StatelessWidget {
         const Text('RPM', style: TextStyle(color: _mutedColor)),
       ],
     );
+    FilledButton controlButton(String label, VoidCallback callback) {
+      return FilledButton(
+        onPressed: enabled ? callback : null,
+        style: FilledButton.styleFrom(
+          minimumSize: const Size(70, 28),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 7),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          visualDensity: VisualDensity.standard,
+          disabledBackgroundColor: const Color(0xFFBCC3C9),
+          disabledForegroundColor: Colors.white,
+          textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+        ),
+        child: Text(label),
+      );
+    }
+
     final buttons = Wrap(
       spacing: 10,
       runSpacing: 8,
       children: [
-        // 集合中的 for：复用相同样式，生成两个文字不同的按钮。
-        for (final label in ['启动', '停止'])
-          Tooltip(
-            message: '尚未接入电机控制',
-            child: FilledButton(
-              // Flutter 约定 onPressed 为 null 时按钮禁用。
-              // 后续接入控制命令时，再根据连接状态和输入有效性提供回调。
-              onPressed: null,
-              style: FilledButton.styleFrom(
-                minimumSize: const Size(70, 28),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 7,
-                ),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                visualDensity: VisualDensity.standard,
-                disabledBackgroundColor: const Color(0xFFBCC3C9),
-                disabledForegroundColor: Colors.white,
-                // copyWith 保留主题字体，只改字号和粗细；?. 表示
-                // labelLarge 不为 null 时才调用 copyWith。
-                textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(5),
-                ),
-              ),
-              child: Text(label),
-            ),
-          ),
+        Tooltip(message: '启动电机', child: controlButton('启动', onStart)),
+        Tooltip(message: '停止电机', child: controlButton('停止', onStop)),
       ],
     );
 
     return _Panel(
       title: '控制',
+      headerLeading: Text(
+        connected ? '已连接' : '未连接',
+        style: TextStyle(
+          color: connected ? Colors.green.shade700 : _mutedColor,
+          fontSize: 12,
+        ),
+      ),
       // 窄窗口上下排列，宽窗口左右排列；两种布局复用上面创建的组件。
-      child: compact
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                speedInput,
-                const SizedBox(height: 10),
-                Align(alignment: Alignment.centerRight, child: buttons),
-              ],
-            )
-          : Row(
-              children: [
-                // 横向 Row 宽度有限，Expanded 把按钮之外的剩余宽度交给输入区。
-                Expanded(child: speedInput),
-                const SizedBox(width: 16),
-                buttons,
-              ],
-            ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          compact
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    speedInput,
+                    const SizedBox(height: 10),
+                    Align(alignment: Alignment.centerRight, child: buttons),
+                  ],
+                )
+              : Row(
+                  children: [
+                    Expanded(child: speedInput),
+                    const SizedBox(width: 16),
+                    buttons,
+                  ],
+                ),
+          if (commandPending) ...[
+            const SizedBox(height: 6),
+            const Text('正在发送命令…', style: TextStyle(color: _mutedColor)),
+          ],
+          if (errorText != null) ...[
+            const SizedBox(height: 6),
+            Text(errorText!, style: TextStyle(color: Colors.red.shade700)),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -293,35 +413,89 @@ class _MonitorPanel extends StatelessWidget {
     required this.twoColumns,
     required this.textScale,
     required this.minHeight,
+    required this.snapshot,
   });
 
   final bool twoColumns;
   final double textScale;
   final double minHeight;
-
-  // static const 表示这些配置属于类且是编译期常量，无需每次 build 重建。
-  // 当前范围和版本号用于复现参考图；0.0.0.0 是占位版本，并非设备读取结果。
-  static const _motorFields = [
-    _MonitorField('软件版本', '(main.sub.mini.fixed)', value: '0.0.0.0'),
-    _MonitorField('电机类型', '(0~6)'),
-    _MonitorField('拨码ID', '(0~7)'),
-    _MonitorField('使能状态', '(0/1)'),
-    _MonitorField('转速', '(-3000~3000)', unit: 'RPM'),
-    _MonitorField('电流', '(0~30.0)', unit: 'A'),
-    _MonitorField('电机温度', '(0.1 °C)', unit: '°C'),
-    _MonitorField('MOS温度', '(0.1 °C)', unit: '°C'),
-  ];
-
-  // d/q 轴电流、电压分量放在第二组；单位和范围提示与读数分开保存。
-  static const _dqFields = [
-    _MonitorField('Iq电流分量', '(-32.768~32.767)', unit: 'A'),
-    _MonitorField('Id电流分量', '(-32.768~32.767)', unit: 'A'),
-    _MonitorField('Uq电压分量', '(-32.768~32.767)', unit: 'V'),
-    _MonitorField('Ud电压分量', '(-32.768~32.767)', unit: 'V'),
-  ];
+  final FocSnapshot snapshot;
 
   @override
   Widget build(BuildContext context) {
+    final motorFields = [
+      _MonitorField(
+        '软件版本',
+        '(main.sub.mini.fixed)',
+        value: snapshot.softwareVersion?.displayName,
+      ),
+      _MonitorField('电机类型', '(0~6)', value: _motorTypeName(snapshot.motorType)),
+      _MonitorField('拨码ID', '(0~7)', value: snapshot.dipSwitchId?.id),
+      _MonitorField(
+        '使能状态',
+        '(0/1)',
+        value: snapshot.reportedEnableState == null
+            ? null
+            : (snapshot.reportedEnableState!.enabled ? '1' : '0'),
+      ),
+      _MonitorField(
+        '转速',
+        '(-3000~3000)',
+        unit: 'RPM',
+        value: snapshot.latestSpeed?.value.rpm,
+      ),
+      _MonitorField(
+        '电流',
+        '(0~30.0)',
+        unit: 'A',
+        value: _number(snapshot.latestCurrent?.value.amperes),
+      ),
+      _MonitorField(
+        '电机温度',
+        '(0.1 °C)',
+        unit: '°C',
+        value: _number(snapshot.motorTemperature?.celsius),
+      ),
+      _MonitorField(
+        'MOS温度',
+        '(0.1 °C)',
+        unit: '°C',
+        value: _number(snapshot.mosTemperature?.celsius),
+      ),
+      _MonitorField(
+        '错误码',
+        '(uint16)',
+        value: _errorCodeText(snapshot.errorCode?.code),
+      ),
+    ];
+    final dq = snapshot.latestDq?.value;
+    final dqFields = [
+      _MonitorField(
+        'Iq电流分量',
+        '(-32.768~32.767)',
+        unit: 'A',
+        value: _number(dq?.iq),
+      ),
+      _MonitorField(
+        'Id电流分量',
+        '(-32.768~32.767)',
+        unit: 'A',
+        value: _number(dq?.id),
+      ),
+      _MonitorField(
+        'Uq电压分量',
+        '(-32.768~32.767)',
+        unit: 'V',
+        value: _number(dq?.uq),
+      ),
+      _MonitorField(
+        'Ud电压分量',
+        '(-32.768~32.767)',
+        unit: 'V',
+        value: _number(dq?.ud),
+      ),
+    ];
+
     // 局部函数把一组字段转换为一列组件。=> 是只有一个返回表达式的函数简写。
     // 字段配置与绘制代码分开后，添加字段只需修改上面的列表。
     Widget fieldColumn(List<_MonitorField> fields) => Column(
@@ -344,17 +518,17 @@ class _MonitorPanel extends StatelessWidget {
                   // 左组固定预留宽度，右组使用剩余空间；两组都从顶部开始排列。
                   SizedBox(
                     width: 280 * textScale,
-                    child: fieldColumn(_motorFields),
+                    child: fieldColumn(motorFields),
                   ),
-                  Expanded(child: fieldColumn(_dqFields)),
+                  Expanded(child: fieldColumn(dqFields)),
                 ],
               )
             : Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  fieldColumn(_motorFields),
+                  fieldColumn(motorFields),
                   const SizedBox(height: 12),
-                  fieldColumn(_dqFields),
+                  fieldColumn(dqFields),
                 ],
               ),
       ),
@@ -366,17 +540,14 @@ class _MonitorPanel extends StatelessWidget {
 /// label 是名称，hint 是范围或精度提示，unit 是单位，value 是显示字符串。
 /// 所有成员为 final，创建后不重新赋值；未传 value 时默认显示“--”。
 class _MonitorField {
-  const _MonitorField(
-    this.label,
-    this.hint, {
-    this.unit = '',
-    this.value = '--',
-  });
+  const _MonitorField(this.label, this.hint, {this.unit = '', this.value});
 
   final String label;
   final String hint;
   final String unit;
-  final String value;
+  final Object? value;
+
+  String get displayValue => value?.toString() ?? '--';
 }
 
 /// 一行监控信息：左侧名称与提示，中间只读数值框，右侧单位。
@@ -403,7 +574,7 @@ class _MonitorRow extends StatelessWidget {
                   Text(field.label),
                   Text(
                     field.hint,
-                    style: const TextStyle(fontSize: 11, color: _mutedColor),
+                    style: const TextStyle(fontWeight: FontWeight.w600, color: _mutedColor),
                   ),
                 ],
               ),
@@ -412,7 +583,7 @@ class _MonitorRow extends StatelessWidget {
           // Semantics 给屏幕阅读器提供说明。excludeSemantics 避免再重复朗读
           // 内部的占位文字，明确“--”或占位版本号都不是实际设备读数。
           Semantics(
-            label: '${field.label}：尚未接入数据',
+            label: '${field.label}：${field.displayValue}',
             excludeSemantics: true,
             // 用 Container + Text 绘制只读数值框，不使用可编辑的 TextField。
             child: Container(
@@ -426,10 +597,10 @@ class _MonitorRow extends StatelessWidget {
                 borderRadius: BorderRadius.circular(3),
               ),
               child: Text(
-                field.value,
+                field.displayValue,
                 style: const TextStyle(
                   color: _valueColor,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),
@@ -451,21 +622,20 @@ class _MonitorRow extends StatelessWidget {
   }
 }
 
-/// 故障区将 16 个故障位按索引排列，目前全部使用表示“状态未知”的灰灯。
+/// 故障区将故障码按 bit 展开；未收到故障码时明确显示“未知”。
 class _FaultPanel extends StatelessWidget {
   const _FaultPanel({
     required this.columns,
     required this.contentWidth,
     required this.textScale,
+    required this.snapshot,
   });
 
   final int columns;
   final double contentWidth;
   final double textScale;
+  final FocSnapshot snapshot;
 
-  // 列表索引就是 bit 编号：第 0 项对应 bit0，第 15 项对应 bit15。
-  // 后续绑定故障码时可用 (errorCode & (1 << bit)) != 0 判断某一位是否置位；
-  // 未收到故障码的状态应与“已收到且所有位均为 0”分开处理。
   static const _faults = [
     '驱动器过压',
     '驱动器欠压',
@@ -487,82 +657,110 @@ class _FaultPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 扣除面板左右 padding、边框与列间距，故障位保持从左到右排列。
-    // 16 = 左右各 8 的内边距；2 = 左右各 1 的边框；每两列之间相隔 8。
-    final tileWidth = (contentWidth - 16 - 2 - (columns - 1) * 8) / columns;
+    final tileWidth = (contentWidth - 18 - (columns - 1) * 8) / columns;
+    final errorCode = snapshot.errorCode?.code;
+    final codeText = errorCode == null
+        ? '--'
+        : '0x${errorCode.toRadixString(16).padLeft(4, '0')}';
 
     return _Panel(
       title: '电机故障信息',
       padding: const EdgeInsets.all(8),
-      headerLeading: const Tooltip(
-        message: '尚未接入故障数据',
-        child: Text('--', style: TextStyle(color: _mutedColor)),
+      headerLeading: Tooltip(
+        message: errorCode == null ? '尚未收到故障数据' : '故障码 $codeText',
+        child: Text(
+          codeText,
+          style: TextStyle(
+            color: errorCode == null ? _mutedColor : _labelColor,
+          ),
+        ),
       ),
-      // 每个故障项使用计算好的宽度，Wrap 会自动形成指定列数并换行。
       child: Wrap(
         spacing: 8,
         runSpacing: 4,
         children: [
           for (var bit = 0; bit < _faults.length; bit++)
-            Semantics(
-              label: 'bit$bit ${_faults[bit]}：状态未知',
-              excludeSemantics: true,
-              child: Tooltip(
-                // 鼠标悬停时显示完整位编号、名称及占位状态。
-                message: 'bit$bit ${_faults[bit]}：尚未接入数据',
-                child: Container(
-                  width: tileWidth,
-                  constraints: BoxConstraints(minHeight: 34 * textScale),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 9,
-                    vertical: 7,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF2F4F5),
-                    border: Border.all(color: const Color(0xFFDFE5E9)),
-                    borderRadius: BorderRadius.circular(5),
-                  ),
-                  child: Row(
-                    children: [
-                      // 小圆点只是状态展示，没有点击行为；灰色不代表“无故障”。
-                      Container(
-                        width: 12,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: const Color(0xFF98A8AA),
-                          border: Border.all(color: const Color(0xFF849496)),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      // 文字占用圆点之外的剩余宽度，长名称可自动换行。
-                      Expanded(
-                        // Text.rich + TextSpan 让同一段文字有不同样式：
-                        // bit 编号加粗，故障名称保持普通字重。
-                        child: Text.rich(
-                          TextSpan(
-                            children: [
-                              TextSpan(
-                                text: 'bit$bit ',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              TextSpan(text: _faults[bit]),
-                            ],
-                          ),
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: _mutedColor,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+            _FaultTile(
+              bit: bit,
+              name: _faults[bit],
+              errorCode: errorCode,
+              width: tileWidth,
+              textScale: textScale,
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _FaultTile extends StatelessWidget {
+  const _FaultTile({
+    required this.bit,
+    required this.name,
+    required this.errorCode,
+    required this.width,
+    required this.textScale,
+  });
+
+  final int bit;
+  final String name;
+  final int? errorCode;
+  final double width;
+  final double textScale;
+
+  @override
+  Widget build(BuildContext context) {
+    final known = errorCode != null;
+    final active = known && (errorCode! & (1 << bit)) != 0;
+    final state = !known ? '未知' : (active ? '故障' : '正常');
+    final color = !known
+        ? const Color(0xFF98A8AA)
+        : active
+        ? Colors.red.shade700
+        : Colors.green.shade700;
+    return Semantics(
+      label: 'bit$bit $name：$state',
+      excludeSemantics: true,
+      child: Tooltip(
+        message: 'bit$bit $name：$state',
+        child: Container(
+          width: width,
+          constraints: BoxConstraints(minHeight: 34 * textScale),
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF2F4F5),
+            border: Border.all(color: const Color(0xFFDFE5E9)),
+            borderRadius: BorderRadius.circular(5),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: color,
+                  border: Border.all(color: const Color(0xFF849496)),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: 'bit$bit ',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      TextSpan(text: name),
+                    ],
+                  ),
+                  style: const TextStyle(fontSize: 12, color: _mutedColor),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -37,7 +37,7 @@ class _MainPageState extends State<MainPage> {
     // 把同一个 _serialService 传给 SettingPage，这种做法通常称为“依赖注入”。
     // 因为 Service 由 MainPage 持有，所以离开设置页时串口不会被自动断开。
     _pages = [
-      const MotPage(),
+      MotPage(controller: _focController),
       const Center(child: Text('当前是POS', style: TextStyle(fontSize: 30))),
       const Center(child: Text('当前是CHT', style: TextStyle(fontSize: 30))),
       SettingPage(serialService: _serialService),
