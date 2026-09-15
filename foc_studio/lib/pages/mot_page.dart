@@ -125,35 +125,16 @@ class _MotPageState extends State<MotPage> {
           builder: (context, constraints) {
             // 页面左右各留 10 个逻辑像素，因此内容宽度减去 20。
             final contentWidth = math.max(0.0, constraints.maxWidth - 20);
-            // 监控区宽时并排显示两组字段，窄时上下排列。
+            // 监控区宽时并排显示两组字段，窄时上下排列。无论哪种排法，
+            // 每个 Column 都只承载一组字段（第一组 9 项、第二组 4 项）。
             final twoColumns = contentWidth >= 580 * textScale;
             // 控制区空间不足时，把按钮移到输入框下方。
             final compactControls = contentWidth < 540 * textScale;
-            // 三元表达式“条件 ? 成立时的值 : 不成立时的值”：
-            // 足够宽用 4 列，中等宽用 2 列，更窄用 1 列。
-            final faultColumns = contentWidth >= 760 * textScale
-                ? 4
-                : contentWidth >= 380 * textScale
-                ? 2
-                : 1;
-            // 根据当前间距和字号估算控制区、故障区高度，用剩余空间撑开监控区。
-            // 这些是布局估算值，不是强制高度；文字换行后各区仍可自然增高。
-            final controlHeight = compactControls
-                ? 57 + 55 * textScale
-                : 29 + 43 * textScale;
-            // ceil() 向上取整，确保最后一行即使未排满也计入行数。
-            final faultRows = (16 / faultColumns).ceil();
-            final faultHeight =
-                26 + 19 * textScale + faultRows * (34 * textScale + 4);
-            // 36 = 上下外边距 20 + 两处分区间距 16；监控区至少保留 446 高。
-            final monitorMinHeight = math.max(
-              446.0,
-              constraints.maxHeight - 36 - controlHeight - faultHeight,
-            );
-
-            // 内容超过窗口高度时允许整页滚动；不要在这个纵向 Column 中
-            // 直接用 Expanded 分配高度，因为滚动方向没有有限的最大高度。
-            return SingleChildScrollView(
+            // 电机故障信息固定为 4 列。应用的最小窗口尺寸保证每一格都有
+            // 足够的宽度，因此不再根据窗口宽度切换成 2 列或 1 列。
+            const faultColumns = 4;
+            // 不使用 SingleChildScrollView：三个分区均直接受当前窗口约束。
+            return Padding(
               padding: const EdgeInsets.all(10),
               child: Column(
                 // stretch 让三个分区横向占满可用宽度。
@@ -170,12 +151,14 @@ class _MotPageState extends State<MotPage> {
                     onStop: () => _setMotorControl(false),
                   ),
                   const SizedBox(height: 8),
-                  // 只限制最小高度，单列或大字号时允许内容自然撑高。
-                  _MonitorPanel(
-                    twoColumns: twoColumns,
-                    textScale: textScale,
-                    minHeight: monitorMinHeight,
-                    snapshot: snapshot,
+                  // Expanded 取得控制区和故障区实际布局后剩余的精确高度，
+                  // 避免依据估算高度时出现数个像素的底部溢出。
+                  Expanded(
+                    child: _MonitorPanel(
+                      twoColumns: twoColumns,
+                      textScale: textScale,
+                      snapshot: snapshot,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   _FaultPanel(
@@ -203,35 +186,38 @@ class _StackPanel extends StatelessWidget {
     required this.title,
     required this.child,
     this.padding = const EdgeInsets.fromLTRB(15, 18, 15, 12),
-    this.minHeight,
+    this.fillHeight = false,
   });
 
   final String title;
   final Widget child;
   final EdgeInsets padding;
-  final double? minHeight;
+  final bool fillHeight;
 
   @override
   Widget build(BuildContext context) {
+    final panelBody = Container(
+      width: double.infinity,
+      padding: padding,
+      decoration: BoxDecoration(
+        color: _pageBackground,
+        border: Border.all(color: _panelBorder, width: 1.5),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: child,
+    );
+
     return Stack(
       key: ValueKey('mot-panel-$title'),
       clipBehavior: Clip.none,
       children: [
         // 边框下移，给标题留出覆盖边线的位置。
-        Container(
-          width: double.infinity,
-          margin: const EdgeInsets.only(top: 10),
-          constraints: minHeight == null
-              ? null
-              : BoxConstraints(minHeight: math.max(0, minHeight! - 10)),
-          padding: padding,
-          decoration: BoxDecoration(
-            color: _pageBackground,
-            border: Border.all(color: _panelBorder, width: 1.5),
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: child,
-        ),
+        fillHeight
+            ? Positioned.fill(top: 10, child: panelBody)
+            : Container(
+                margin: const EdgeInsets.only(top: 10),
+                child: panelBody,
+              ),
         // 标题底色与页面、面板相同，所以能自然遮住一段顶部边框。
         Positioned(
           top: 0,
@@ -414,13 +400,11 @@ class _MonitorPanel extends StatelessWidget {
   const _MonitorPanel({
     required this.twoColumns,
     required this.textScale,
-    required this.minHeight,
     required this.snapshot,
   });
 
   final bool twoColumns;
   final double textScale;
-  final double minHeight;
   final FocSnapshot snapshot;
 
   @override
@@ -473,8 +457,8 @@ class _MonitorPanel extends StatelessWidget {
 
     return _StackPanel(
       title: '监控界面',
-      // 只给最小高度，不固定最大高度，保证窄屏或大字号时内容仍能完整显示。
-      minHeight: minHeight,
+      // 外层 Expanded 已提供精确剩余高度，因此边框也填满该空间。
+      fillHeight: true,
       child: twoColumns
           ? Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -610,7 +594,10 @@ class _FaultPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tileWidth = (contentWidth - 18 - (columns - 1) * 8) / columns;
+    // contentWidth 是页面内边距扣除后的宽度；面板自身还有左右 8 的
+    // padding 和 1.5 的边框。多预留 1 像素，避免浮点取整后第 4 项被
+    // Wrap 错误地换到下一行，从而破坏固定 4 列的布局。
+    final tileWidth = (contentWidth - 20 - (columns - 1) * 8) / columns;
     final errorCode = snapshot.errorCode?.code;
 
     return _StackPanel(
