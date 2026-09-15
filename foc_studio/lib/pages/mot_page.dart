@@ -130,9 +130,6 @@ class _MotPageState extends State<MotPage> {
             final twoColumns = contentWidth >= 580 * textScale;
             // 控制区空间不足时，把按钮移到输入框下方。
             final compactControls = contentWidth < 540 * textScale;
-            // 电机故障信息固定为 4 列。应用的最小窗口尺寸保证每一格都有
-            // 足够的宽度，因此不再根据窗口宽度切换成 2 列或 1 列。
-            const faultColumns = 4;
             // 不使用 SingleChildScrollView：三个分区均直接受当前窗口约束。
             return Padding(
               padding: const EdgeInsets.all(10),
@@ -143,7 +140,6 @@ class _MotPageState extends State<MotPage> {
                   _ControlPanel(
                     compact: compactControls,
                     targetSpeedController: _targetSpeedController,
-                    connected: controller.isConnected,
                     enabled: controller.isConnected && !_commandPending,
                     commandPending: _commandPending,
                     errorText: _commandError,
@@ -162,7 +158,6 @@ class _MotPageState extends State<MotPage> {
                   ),
                   const SizedBox(height: 8),
                   _FaultPanel(
-                    columns: faultColumns,
                     contentWidth: contentWidth,
                     textScale: textScale,
                     snapshot: snapshot,
@@ -230,8 +225,8 @@ class _StackPanel extends StatelessWidget {
               child: Text(
                 title,
                 style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900, // 900 是 Flutter 支持的最大粗体
                 ),
               ),
             ),
@@ -247,7 +242,6 @@ class _ControlPanel extends StatelessWidget {
   const _ControlPanel({
     required this.compact,
     required this.targetSpeedController,
-    required this.connected,
     required this.enabled,
     required this.commandPending,
     required this.errorText,
@@ -257,7 +251,6 @@ class _ControlPanel extends StatelessWidget {
 
   final bool compact;
   final TextEditingController targetSpeedController;
-  final bool connected;
   final bool enabled;
   final bool commandPending;
   final String? errorText;
@@ -562,13 +555,11 @@ class _MonitorRow extends StatelessWidget {
 /// 故障区将故障码按 bit 展开；未收到故障码时明确显示“未知”。
 class _FaultPanel extends StatelessWidget {
   const _FaultPanel({
-    required this.columns,
     required this.contentWidth,
     required this.textScale,
     required this.snapshot,
   });
 
-  final int columns;
   final double contentWidth;
   final double textScale;
   final FocSnapshot snapshot;
@@ -591,13 +582,16 @@ class _FaultPanel extends StatelessWidget {
     '保留位14',
     '保留位15',
   ];
+  // 应用的最小窗口尺寸保证每一格都有足够的宽度，因此固定为 4 列。
+  static const _columns = 4;
 
   @override
   Widget build(BuildContext context) {
     // contentWidth 是页面内边距扣除后的宽度；面板自身还有左右 8 的
     // padding 和 1.5 的边框。多预留 1 像素，避免浮点取整后第 4 项被
     // Wrap 错误地换到下一行，从而破坏固定 4 列的布局。
-    final tileWidth = (contentWidth - 20 - (columns - 1) * 8) / columns;
+    final tileWidth =
+        (contentWidth - 20 - (_columns - 1) * 8) / _columns;
     final errorCode = snapshot.errorCode?.code;
 
     return _StackPanel(
