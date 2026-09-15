@@ -27,10 +27,10 @@ String? _motorTypeName(MotorTypeMessage? message) {
   final name = switch (message.type) {
     MotorType.sideBrushZhongling => '边刷(中菱)',
     MotorType.rollerBrush => '滚刷',
-    MotorType.newSideBrush11050 => '新边刷(11050)',
+    MotorType.newSideBrush11050 => '1.5N',
     MotorType.zhonglingHubMotor => '中菱轮毂电机',
-    MotorType.cutter08Nm => '0.8N割刀电机',
-    MotorType.frxCutter04Nm => 'frx_0.4N割刀电机',
+    MotorType.cutter08Nm => '0.8N',
+    MotorType.frxCutter04Nm => '0.4N',
     MotorType.unknown || null => '未知',
   };
   return '${message.rawType} ($name)';
