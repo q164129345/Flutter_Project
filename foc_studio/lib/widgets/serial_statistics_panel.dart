@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../services/serial_port_statistics.dart';
+import 'mot_style_panel.dart';
 
-/// MainPage 切走设置页时会卸载本组件，ListenableBuilder 随之取消监听。
-/// 再次进入时直接读取后台累计值，无需等待下一次采样。
+/// 统计内容由设置页的“串口统计”分区提供外层标题和边框。
 class SerialStatisticsPanel extends StatelessWidget {
   const SerialStatisticsPanel({super.key, required this.statistics});
 
@@ -14,7 +14,7 @@ class SerialStatisticsPanel extends StatelessWidget {
     return ListenableBuilder(
       listenable: statistics,
       builder: (context, child) {
-        final sending = _StatisticsCard(
+        final sending = _StatisticsGroup(
           title: '发送',
           icon: Icons.arrow_upward_rounded,
           metrics: [
@@ -34,7 +34,7 @@ class SerialStatisticsPanel extends StatelessWidget {
             ),
           ],
         );
-        final receiving = _StatisticsCard(
+        final receiving = _StatisticsGroup(
           title: '接收',
           icon: Icons.arrow_downward_rounded,
           metrics: [
@@ -69,15 +69,11 @@ class SerialStatisticsPanel extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('串口统计', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 8),
-            Text(
+            const Text(
               '每次连接重新计数，断开后保留；速率每秒更新。',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+              style: TextStyle(fontSize: 12, color: motMutedColor),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             LayoutBuilder(
               builder: (context, constraints) {
                 if (constraints.maxWidth < 560) {
@@ -90,7 +86,7 @@ class SerialStatisticsPanel extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(child: sending),
-                    const SizedBox(width: 16),
+                    const SizedBox(width: 24),
                     Expanded(child: receiving),
                   ],
                 );
@@ -111,8 +107,8 @@ class _Metric {
   final String? hint;
 }
 
-class _StatisticsCard extends StatelessWidget {
-  const _StatisticsCard({
+class _StatisticsGroup extends StatelessWidget {
+  const _StatisticsGroup({
     required this.title,
     required this.icon,
     required this.metrics,
@@ -124,55 +120,63 @@ class _StatisticsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card.outlined(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
-            Row(
-              children: [
-                Icon(icon, size: 20, color: theme.colorScheme.primary),
-                const SizedBox(width: 8),
-                Text(title, style: theme.textTheme.titleMedium),
-              ],
-            ),
-            const SizedBox(height: 12),
-            for (final metric in metrics)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Tooltip(
-                      message: metric.hint ?? '最近一个采样周期的平均字节速率',
-                      child: Text(
-                        metric.label,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        metric.value,
-                        key: ValueKey(metric.label),
-                        textAlign: TextAlign.right,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            Icon(icon, size: 18, color: motValueColor),
+            const SizedBox(width: 8),
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
           ],
         ),
-      ),
+        const SizedBox(height: 12),
+        for (final metric in metrics)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Tooltip(
+                    message: metric.hint ?? '最近一个采样周期的平均字节速率',
+                    child: Text(
+                      metric.label,
+                      style: const TextStyle(color: motMutedColor),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Semantics(
+                  label: '${metric.label}：${metric.value}',
+                  excludeSemantics: true,
+                  child: Container(
+                    width: 132,
+                    constraints: const BoxConstraints(minHeight: 28),
+                    alignment: Alignment.centerRight,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8F4FF),
+                      border: Border.all(color: const Color(0xFFA1D4FF)),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                    child: Text(
+                      metric.value,
+                      key: ValueKey(metric.label),
+                      style: const TextStyle(
+                        color: motValueColor,
+                        fontWeight: FontWeight.w700,
+                        fontFeatures: [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }

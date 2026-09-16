@@ -7,15 +7,16 @@ import 'package:flutter/services.dart';
 
 import '../controllers/foc_controller.dart';
 import '../protocol/pc_mcu/messages/configuration_messages.dart';
+import '../widgets/mot_style_panel.dart';
 
 // 页面共用的配色集中在这里，调整外观时不用逐个修改组件。
 // 0xFFRRGGBB 中 FF 表示完全不透明，后六位分别表示红、绿、蓝。
 // 名称前的下划线表示 Dart 库内私有，本文件中的组件都可以使用。
-const _pageBackground = Color(0xFFFFF7FF);
-const _panelBorder = Color(0xFF7B7780);
-const _labelColor = Color(0xFF625E66);
-const _mutedColor = Color(0xFF85818A);
-const _valueColor = Color(0xFF1688CB);
+const _pageBackground = motPageBackground;
+const _panelBorder = motPanelBorder;
+const _labelColor = motLabelColor;
+const _mutedColor = motMutedColor;
+const _valueColor = motValueColor;
 
 String? _number(double? value) => value?.toStringAsFixed(2);
 
@@ -191,67 +192,6 @@ class _MotPageState extends State<MotPage> {
 ///
 /// Container 绘制边框和内容背景；Stack 让居中标题覆盖顶部边框，形成类似
 /// fieldset 的标题缺口。MOT 页面只使用三个该组件实例，分别对应控制、监控和故障区。
-class _StackPanel extends StatelessWidget {
-  const _StackPanel({
-    required this.title,
-    required this.child,
-    this.padding = const EdgeInsets.fromLTRB(15, 18, 15, 12),
-    this.fillHeight = false,
-  });
-
-  final String title;
-  final Widget child;
-  final EdgeInsets padding;
-  final bool fillHeight;
-
-  @override
-  Widget build(BuildContext context) {
-    final panelBody = Container(
-      width: double.infinity,
-      padding: padding,
-      decoration: BoxDecoration(
-        color: _pageBackground,
-        border: Border.all(color: _panelBorder, width: 1.5),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: child,
-    );
-
-    return Stack(
-      key: ValueKey('mot-panel-$title'),
-      clipBehavior: Clip.none,
-      children: [
-        // 边框下移，给标题留出覆盖边线的位置。
-        fillHeight
-            ? Positioned.fill(top: 10, child: panelBody)
-            : Container(
-                margin: const EdgeInsets.only(top: 10),
-                child: panelBody,
-              ),
-        // 标题底色与页面、面板相同，所以能自然遮住一段顶部边框。
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          child: Align(
-            child: Container(
-              color: _pageBackground,
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900, // 900 是 Flutter 支持的最大粗体
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 /// 控制区展示目标速度输入和控制按钮。
 class _ControlPanel extends StatelessWidget {
   const _ControlPanel({
@@ -350,7 +290,7 @@ class _ControlPanel extends StatelessWidget {
       children: [controlButton('启动', onStart), controlButton('停止', onStop)],
     );
 
-    return _StackPanel(
+    return MotStylePanel(
       title: '控制',
       // 窄窗口上下排列，宽窗口左右排列；两种布局复用上面创建的组件。
       child: Column(
@@ -438,7 +378,7 @@ class _MonitorPanel extends StatelessWidget {
       ],
     );
 
-    return _StackPanel(
+    return MotStylePanel(
       title: '监控界面',
       // 外层 Expanded 已提供精确剩余高度，因此边框也填满该空间。
       fillHeight: true,
@@ -586,7 +526,7 @@ class _FaultPanel extends StatelessWidget {
     final tileWidth = (contentWidth - 20 - (_columns - 1) * 8) / _columns;
     final errorCode = snapshot.errorCode?.code;
 
-    return _StackPanel(
+    return MotStylePanel(
       title: '电机故障信息',
       padding: const EdgeInsets.fromLTRB(8, 18, 8, 8),
       child: Wrap(
