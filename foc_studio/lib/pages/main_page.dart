@@ -42,7 +42,7 @@ class _MainPageState extends State<MainPage> {
       const Center(child: Text('当前是POS', style: TextStyle(fontSize: 30))),
       const Center(child: Text('当前是CHT', style: TextStyle(fontSize: 30))),
       LogPage(serialService: _serialService),
-      SettingPage(serialService: _serialService),
+      SettingPage(serialService: _serialService, controller: _focController),
     ];
   }
 

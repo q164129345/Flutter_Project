@@ -1,13 +1,22 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../controllers/foc_controller.dart';
 import '../services/serial_port_service.dart';
+import '../widgets/external_flash_info_panel.dart';
 import '../widgets/mot_style_panel.dart';
 import '../widgets/serial_statistics_panel.dart';
 
 class SettingPage extends StatefulWidget {
-  const SettingPage({super.key, required this.serialService});
+  const SettingPage({
+    super.key,
+    required this.serialService,
+    required this.controller,
+  });
 
   final SerialPortService serialService;
+  final FocController controller;
 
   @override
   State<SettingPage> createState() => _SettingPageState();
@@ -15,6 +24,7 @@ class SettingPage extends StatefulWidget {
 
 class _SettingPageState extends State<SettingPage> {
   SerialPortService get _serialService => widget.serialService;
+  FocController get _controller => widget.controller;
 
   List<String> _ports = [];
   bool _scanning = false;
@@ -23,6 +33,8 @@ class _SettingPageState extends State<SettingPage> {
   String? _selectedPort;
   static const int _baudRate = 460800;
   String _status = '未连接';
+  bool _flashQueryPending = false;
+  bool _wasConnected = false;
 
   bool get _isConnected => _serialService.isConnected;
 
@@ -31,9 +43,12 @@ class _SettingPageState extends State<SettingPage> {
     super.initState();
     _selectedPort = _serialService.connectedPortName;
     _status = _connectionStatusText;
+    _wasConnected = _isConnected;
     _serialService.addListener(_handleConnectionChanged);
     _serialService.busy.addListener(_handleBusyChanged);
+    _controller.addListener(_handleControllerChanged);
     _refreshPorts();
+    if (_isConnected) unawaited(_queryExternalFlashId());
   }
 
   String get _connectionStatusText => switch (_serialService.connectionStatus) {
@@ -50,7 +65,14 @@ class _SettingPageState extends State<SettingPage> {
 
   void _handleBusyChanged() => setState(() {});
 
+  void _handleControllerChanged() {
+    if (mounted) setState(() {});
+  }
+
   void _handleConnectionChanged() {
+    final isConnected = _isConnected;
+    final becameConnected = !_wasConnected && isConnected;
+    _wasConnected = isConnected;
     setState(() {
       _status = _connectionStatusText;
       final connectedPort = _serialService.connectedPortName;
@@ -61,6 +83,7 @@ class _SettingPageState extends State<SettingPage> {
         _selectedPort = connectedPort;
       }
     });
+    if (becameConnected) unawaited(_queryExternalFlashId());
   }
 
   @override
@@ -73,7 +96,12 @@ class _SettingPageState extends State<SettingPage> {
       _serialService.busy.addListener(_handleBusyChanged);
       _selectedPort = _serialService.connectedPortName;
       _status = _connectionStatusText;
+      _wasConnected = _isConnected;
       _refreshPorts();
+    }
+    if (oldWidget.controller != _controller) {
+      oldWidget.controller.removeListener(_handleControllerChanged);
+      _controller.addListener(_handleControllerChanged);
     }
   }
 
@@ -81,7 +109,22 @@ class _SettingPageState extends State<SettingPage> {
   void dispose() {
     _serialService.removeListener(_handleConnectionChanged);
     _serialService.busy.removeListener(_handleBusyChanged);
+    _controller.removeListener(_handleControllerChanged);
     super.dispose();
+  }
+
+  /// 发送查询命令；具体的 ID 值只在 MCU 响应后经 FocController 快照回到 UI。
+  Future<void> _queryExternalFlashId() async {
+    if (_flashQueryPending || !_isConnected) return;
+
+    setState(() => _flashQueryPending = true);
+    try {
+      await _controller.queryExternalFlashId();
+    } catch (_) {
+      // 命令发送失败时保持“未读取”或上一次 MCU 响应，不伪造任何设备数据。
+    } finally {
+      if (mounted) setState(() => _flashQueryPending = false);
+    }
   }
 
   Future<void> _refreshPorts() async {
@@ -315,10 +358,16 @@ class _SettingPageState extends State<SettingPage> {
                       statistics: _serialService.statistics,
                     ),
                   ),
+                  const SizedBox(height: 8),
+                  ExternalFlashInfoPanel(
+                    flashId: _controller.state.externalFlashId,
+                    isConnected: _isConnected,
+                    isQueryPending: _flashQueryPending,
+                    onRefresh: _queryExternalFlashId,
+                  ),
                 ]),
               ),
             ),
-            // 预留 Flash 信息面板的位置；后续直接替换 SizedBox 即可。
             const SliverFillRemaining(hasScrollBody: false, child: SizedBox()),
           ],
         ),
