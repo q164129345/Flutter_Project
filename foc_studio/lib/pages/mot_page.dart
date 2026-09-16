@@ -22,6 +22,30 @@ String? _number(double? value) => value?.toStringAsFixed(2);
 String? _errorCodeText(int? code) =>
     code == null ? null : '0x${code.toRadixString(16).padLeft(4, '0')}';
 
+/// 把空值和不符合目标转速格式的编辑统一还原为 0，确保输入框始终有值。
+TextEditingValue _targetSpeedInputFormatter(
+  TextEditingValue oldValue,
+  TextEditingValue newValue,
+) {
+  const zeroValue = TextEditingValue(
+    text: '0',
+    selection: TextSelection.collapsed(offset: 1),
+  );
+  final text = newValue.text;
+  if (text.isEmpty || !RegExp(r'^-?\d{0,4}$').hasMatch(text)) {
+    return zeroValue;
+  }
+
+  // 初始值为 0 时，直接继续输入数字应得到 1、12、123…，而不是 01、012…
+  final normalized = text.replaceFirst(RegExp(r'^0+(?=\d)'), '');
+  return normalized == text
+      ? newValue
+      : TextEditingValue(
+          text: normalized,
+          selection: TextSelection.collapsed(offset: normalized.length),
+        );
+}
+
 String? _motorTypeName(MotorTypeMessage? message) {
   if (message == null) return null;
   final name = switch (message.type) {
@@ -50,7 +74,6 @@ class MotPage extends StatefulWidget {
 
 class _MotPageState extends State<MotPage> {
   late final TextEditingController _targetSpeedController;
-  String? _commandError;
   bool _commandPending = false;
 
   FocController get controller => widget.controller;
@@ -58,7 +81,7 @@ class _MotPageState extends State<MotPage> {
   @override
   void initState() {
     super.initState();
-    _targetSpeedController = TextEditingController();
+    _targetSpeedController = TextEditingController(text: '0');
     controller.addListener(_handleControllerChanged);
   }
 
@@ -69,27 +92,20 @@ class _MotPageState extends State<MotPage> {
   Future<void> _setMotorControl(bool enabled) async {
     if (_commandPending || !controller.isConnected) return;
     final targetSpeed = int.tryParse(_targetSpeedController.text.trim());
-    if (targetSpeed == null || targetSpeed < -0x8000 || targetSpeed > 0x7fff) {
-      setState(() => _commandError = '请输入有效的目标转速');
-      return;
-    }
+    // 输入框已限制正常编辑；仍将单独的负号等无法解析的值安全地按 0 发送。
+    final targetSpeedRpm =
+        targetSpeed != null && targetSpeed >= -0x8000 && targetSpeed <= 0x7fff
+        ? targetSpeed
+        : 0;
 
-    setState(() {
-      _commandPending = true;
-      _commandError = null;
-    });
+    setState(() => _commandPending = true);
     try {
-      final accepted = await controller.setMotorControl(
+      await controller.setMotorControl(
         enabled: enabled,
-        targetSpeedRpm: targetSpeed,
+        targetSpeedRpm: targetSpeedRpm,
       );
-      if (!mounted) return;
-      setState(() {
-        _commandError = accepted ? null : '命令发送失败，请检查串口连接';
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _commandError = '命令失败：$error');
+    } catch (_) {
+      // 控制区不显示命令失败提示；finally 仍会恢复按钮状态。
     } finally {
       if (mounted) setState(() => _commandPending = false);
     }
@@ -142,7 +158,6 @@ class _MotPageState extends State<MotPage> {
                     targetSpeedController: _targetSpeedController,
                     enabled: controller.isConnected && !_commandPending,
                     commandPending: _commandPending,
-                    errorText: _commandError,
                     onStart: () => _setMotorControl(true),
                     onStop: () => _setMotorControl(false),
                   ),
@@ -237,14 +252,13 @@ class _StackPanel extends StatelessWidget {
   }
 }
 
-/// 控制区负责输入校验，并把异步命令交给页面状态执行。
+/// 控制区展示目标速度输入和控制按钮。
 class _ControlPanel extends StatelessWidget {
   const _ControlPanel({
     required this.compact,
     required this.targetSpeedController,
     required this.enabled,
     required this.commandPending,
-    required this.errorText,
     required this.onStart,
     required this.onStop,
   });
@@ -253,7 +267,6 @@ class _ControlPanel extends StatelessWidget {
   final TextEditingController targetSpeedController;
   final bool enabled;
   final bool commandPending;
-  final String? errorText;
   final VoidCallback onStart;
   final VoidCallback onStop;
 
@@ -279,25 +292,13 @@ class _ControlPanel extends StatelessWidget {
             // 所以还需要下面的 inputFormatters 检查实际输入。
             keyboardType: const TextInputType.numberWithOptions(signed: true),
             inputFormatters: [
-              TextInputFormatter.withFunction((oldValue, newValue) {
-                // r'...' 是原始字符串，反斜杠直接交给正则表达式解释。
-                // ^ 和 $ 匹配整个输入，-? 允许一个负号，\d{0,4} 允许 0~4 位数字。
-                // 空串和单独的负号也是合法编辑中间态，便于清空或输入负数。
-                // 不匹配时返回 oldValue，撤销本次编辑；这里只检查格式，
-                // 尚未校验转速范围，也没有把输入值发送给设备。
-                return RegExp(r'^-?\d{0,4}$').hasMatch(newValue.text)
-                    ? newValue
-                    : oldValue;
-              }),
+              TextInputFormatter.withFunction(_targetSpeedInputFormatter),
             ],
             textAlign: TextAlign.right,
             style: const TextStyle(fontSize: 14, color: _labelColor),
-            // InputDecoration 描述输入框外观；hintText 是空输入时的提示，
-            // 并不会把 1500 设置成输入框的实际值。
+            // InputDecoration 描述输入框外观。
             decoration: InputDecoration(
               isDense: true,
-              hintText: '例如: 1500',
-              hintStyle: const TextStyle(color: _mutedColor),
               filled: true,
               fillColor: const Color(0xFFDFE3E6),
               contentPadding: const EdgeInsets.symmetric(
@@ -371,10 +372,6 @@ class _ControlPanel extends StatelessWidget {
                     buttons,
                   ],
                 ),
-          if (errorText != null) ...[
-            const SizedBox(height: 6),
-            Text(errorText!, style: TextStyle(color: Colors.red.shade700)),
-          ],
         ],
       ),
     );
