@@ -371,10 +371,6 @@ class _ControlPanel extends StatelessWidget {
                     buttons,
                   ],
                 ),
-          if (commandPending) ...[
-            const SizedBox(height: 6),
-            const Text('正在发送命令…', style: TextStyle(color: _mutedColor)),
-          ],
           if (errorText != null) ...[
             const SizedBox(height: 6),
             Text(errorText!, style: TextStyle(color: Colors.red.shade700)),
