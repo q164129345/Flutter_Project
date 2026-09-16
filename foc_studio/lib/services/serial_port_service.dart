@@ -4,6 +4,7 @@ import 'dart:isolate';
 import 'package:flutter/foundation.dart';
 
 import '../controllers/foc_snapshot.dart';
+import '../models/log_entry.dart';
 import 'background/serial_session_worker.dart';
 import 'background/serial_worker_messages.dart';
 import 'serial_connection_status.dart';
@@ -45,12 +46,16 @@ class SerialPortService extends ChangeNotifier {
   final void Function(SerialWorkerStart) _workerMain;
   final Duration _scanTimeout;
 
-  // 三条独立通知通道：统计面板、操作按钮、业务数据显示。
+  // 四条独立通知通道：统计面板、操作按钮、业务数据显示和日志显示。
   // 连接状态则通过本 Service 的 notifyListeners 通知导航栏等组件。
   late final SerialPortStatistics statistics;
   final ValueNotifier<bool> busy = ValueNotifier(false);
   final ValueNotifier<FocSnapshot> focState = ValueNotifier(
     const FocSnapshot(),
+  );
+  // 日志仅在 LOG 页面可见时按需刷新，避免高频遥测复制整个日志列表。
+  final ValueNotifier<List<LogEntry>> logEntries = ValueNotifier(
+    const <LogEntry>[],
   );
   // ReceivePort 像 UI 的“收件箱”；后台用它的 sendPort 把结果发回来。
   final ReceivePort _events = ReceivePort();
@@ -65,13 +70,19 @@ class SerialPortService extends ChangeNotifier {
   int _busyCount = 0;
   // 有多少个控制器需要业务快照；全部退出监听后即可停止拉取。
   int _focObservers = 0;
+  int _logObservers = 0;
   // 上次收到的后台状态版本；-1 表示下次必须获取完整快照。
   int _focRevision = -1;
+  int _logRevision = -1;
+  // 清空或重连时递增，用于丢弃已经在路上的旧日志快照。
+  int _logGeneration = 0;
   Timer? _statisticsTimer;
   Timer? _focTimer;
+  Timer? _logTimer;
   // 同类快照最多允许一个请求等待回复，避免 UI 忙碌时积压重复请求。
   bool _statisticsPending = false;
   bool _focPending = false;
+  bool _logPending = false;
   // 分别表示“开始关闭”“通信资源已关闭”“Flutter 通知对象已释放”。
   // 拆开记录是为了正确处理后台尚未启动完成、UI 就已退出的情况。
   bool _closing = false;
@@ -133,11 +144,17 @@ class SerialPortService extends ChangeNotifier {
       _connectedBaudRate = event.baudRate;
       _lastConnectionError = event.error;
       statistics.update(event.statistics);
-      // 连接边界使旧业务快照失效；断开时立即清掉旧电机状态。
+      // 连接边界使旧业务与日志快照失效；断开时立即清掉旧显示数据。
       _focRevision = -1;
-      if (!isConnected) focState.value = const FocSnapshot();
+      _logRevision = -1;
+      _logGeneration++;
+      if (!isConnected) {
+        focState.value = const FocSnapshot();
+        logEntries.value = const <LogEntry>[];
+      }
       notifyListeners();
       if (_focObservers > 0) unawaited(_pollFoc());
+      if (_logObservers > 0) unawaited(_pollLogs());
     } else if (!_closing && (event == null || event is List)) {
       // Isolate 的 onExit 默认发送 null，onError 发送错误与堆栈组成的列表。
       _fail(
@@ -158,6 +175,7 @@ class SerialPortService extends ChangeNotifier {
     _pending.clear();
     _statisticsTimer?.cancel();
     _focTimer?.cancel();
+    _logTimer?.cancel();
     _isolate?.kill(priority: Isolate.immediate);
     if (_closing || _disposed) return;
     _connectionStatus = SerialPortConnectionStatus.failed;
@@ -176,6 +194,7 @@ class SerialPortService extends ChangeNotifier {
       ),
     );
     focState.value = const FocSnapshot();
+    logEntries.value = const <LogEntry>[];
     notifyListeners();
   }
 
@@ -262,6 +281,16 @@ class SerialPortService extends ChangeNotifier {
     await _request(SerialOperation.clearProtocolError);
   }
 
+  /// 清空后台会话的日志缓存；下一次日志快照会将空列表同步给 LOG 页面。
+  Future<void> clearLogs() async {
+    await _request(SerialOperation.clearLogs);
+    // Clear 期间可能已有旧快照在返回；使其失效，确保旧日志不会短暂回显。
+    _logGeneration++;
+    _logRevision = -1;
+    logEntries.value = const <LogEntry>[];
+    if (_logObservers > 0 && !_logPending) unawaited(_pollLogs());
+  }
+
   /// 面板出现时立即取一次累计值，然后每秒更新；面板消失只停止取快照。
   /// 后台的字节计数、帧计数和速率采样始终按会话状态独立执行。
   void _observeStatistics(bool visible) {
@@ -327,6 +356,50 @@ class SerialPortService extends ChangeNotifier {
     }
   }
 
+  /// 第一个 LOG 页面监听者出现时开始取日志快照，离开页面后停止轮询。
+  void retainLogSnapshots() {
+    if (_closing || _workerFailure != null) return;
+    if (++_logObservers != 1) return;
+    unawaited(_pollLogs());
+    _logTimer = Timer.periodic(displayInterval, (_) => unawaited(_pollLogs()));
+  }
+
+  /// 日志仍在后台继续缓存；只停止当前不可见页面的显示同步。
+  void releaseLogSnapshots() {
+    if (_logObservers > 0) _logObservers--;
+    if (_logObservers == 0) {
+      _logTimer?.cancel();
+      _logTimer = null;
+    }
+  }
+
+  /// 使用日志版本号按需传输列表，未变化时不触发页面重建。
+  Future<void> _pollLogs() async {
+    if (_logPending || _closing) return;
+    _logPending = true;
+    final generation = _logGeneration;
+    try {
+      final response =
+          await _request(SerialOperation.logSnapshot, _logRevision)
+              as LogSnapshotResponse;
+      if (!_closing &&
+          generation == _logGeneration &&
+          _logObservers > 0 &&
+          response.entries != null) {
+        _logRevision = response.revision;
+        logEntries.value = response.entries!;
+      }
+    } catch (error) {
+      if (!_closing) _fail(error);
+    } finally {
+      _logPending = false;
+      // 清空/重连期间跳过的旧请求结束后，立即补发当前版本的快照。
+      if (!_closing && _logObservers > 0 && generation != _logGeneration) {
+        unawaited(_pollLogs());
+      }
+    }
+  }
+
   /// 需要等待后台清理完成时可 await close()；重复调用复用同一个关闭过程。
   Future<void> close() => _closeFuture ??= _close();
 
@@ -335,6 +408,7 @@ class SerialPortService extends ChangeNotifier {
     _closing = true;
     _statisticsTimer?.cancel();
     _focTimer?.cancel();
+    _logTimer?.cancel();
     try {
       await _request(
         SerialOperation.shutdown,
@@ -362,6 +436,7 @@ class SerialPortService extends ChangeNotifier {
     unawaited(close());
     statistics.dispose();
     focState.dispose();
+    logEntries.dispose();
     busy.dispose();
     super.dispose();
   }

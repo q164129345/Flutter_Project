@@ -62,6 +62,14 @@ void serialSessionWorkerMain(SerialWorkerStart start) {
             session.revision,
             request.argument == session.revision ? null : session.snapshot(),
           );
+        case SerialOperation.logSnapshot:
+          // 日志与 FOC 状态使用独立版本号，避免高频遥测重复复制日志列表。
+          result = LogSnapshotResponse(
+            session.logRevision,
+            request.argument == session.logRevision
+                ? null
+                : session.logSnapshot(),
+          );
         case SerialOperation.setMotorControl:
           final command = request.argument as MotorControlCommand;
           result = session.setMotorControl(
@@ -96,6 +104,8 @@ void serialSessionWorkerMain(SerialWorkerStart start) {
           result = session.rebootMcu();
         case SerialOperation.clearProtocolError:
           session.clearProtocolError();
+        case SerialOperation.clearLogs:
+          session.clearLogs();
         case SerialOperation.shutdown:
           // 先停业务订阅/定时器，再释放串口；退出时附带回复，结束 UI 的等待。
           transport.removeListener(publishConnection);

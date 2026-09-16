@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../controllers/foc_snapshot.dart';
 import '../../controllers/mcu_clock_synchronizer.dart';
+import '../../models/log_entry.dart';
 import '../../protocol/pc_mcu/messages/configuration_messages.dart';
 import '../../protocol/pc_mcu/messages/control_messages.dart';
 import '../../protocol/pc_mcu/messages/mcu_message.dart';
@@ -67,7 +68,8 @@ class FocSession {
       ListQueue();
   final ListQueue<TimestampedSample<HallSensorStateMessage>> _hallHistory =
       ListQueue();
-  final ListQueue<TimestampedSample<McuLogMessage>> _logs = ListQueue();
+  // 日志与遥测历史分开维护，避免日志刷新影响高频遥测显示快照。
+  final ListQueue<LogEntry> _logs = ListQueue();
 
   late StreamSubscription<McuMessage> _messageSubscription;
   late SerialPortConnectionStatus _lastConnectionStatus;
@@ -101,7 +103,10 @@ class FocSession {
   ExternalFlashIdMessage? _externalFlashId;
 
   int _revision = 0;
+  // 日志拥有独立版本号，LOG 页面不需要随每条遥测消息复制日志列表。
+  int _logRevision = 0;
   int get revision => _revision;
+  int get logRevision => _logRevision;
   bool get isConnected => serialService.isConnected;
   bool get motorControlEnabled => _motorControlEnabled;
   int get targetSpeedRpm => _targetSpeedRpm;
@@ -135,7 +140,10 @@ class FocSession {
       List.unmodifiable(_currentHistory);
   List<TimestampedSample<HallSensorStateMessage>> get hallHistory =>
       List.unmodifiable(_hallHistory);
-  List<TimestampedSample<McuLogMessage>> get logs => List.unmodifiable(_logs);
+  List<LogEntry> get logs => List.unmodifiable(_logs);
+
+  /// 返回不可修改的当前日志列表，供后台按需发送给 LOG 页面。
+  List<LogEntry> logSnapshot() => List.unmodifiable(_logs);
 
   /// 仅在 UI 请求且版本有变化时调用，只整理最新状态，不复制历史。
   /// 错误转成文本，传出去的对象只包含数据，不带本地串口资源。
@@ -370,11 +378,13 @@ class FocSession {
       case ExternalFlashIdMessage():
         _externalFlashId = message;
       case McuLogMessage():
+        // 第一版只显示文本；协议中的 level 字段保留给后续分类显示使用。
         _addBounded(
           _logs,
-          TimestampedSample(value: message, timestamp: receivedAt),
+          LogEntry(timestamp: receivedAt, message: message.text),
           logCapacity,
         );
+        _logRevision++;
       case UnknownMcuMessage():
         // 未知命令仍保留在后台消息流中，方便协议扩展；暂不映射到已有业务字段。
         break;
@@ -437,7 +447,17 @@ class FocSession {
     _dqHistory.clear();
     _currentHistory.clear();
     _hallHistory.clear();
+    _clearLogs();
+  }
+
+  /// 清空后台缓存，并递增版本号通知当前可见的 LOG 页面刷新。
+  void clearLogs() {
+    _clearLogs();
+  }
+
+  void _clearLogs() {
     _logs.clear();
+    _logRevision++;
   }
 
   void _cancelTimers() {

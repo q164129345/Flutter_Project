@@ -1,6 +1,7 @@
 import 'dart:isolate';
 
 import '../../controllers/foc_snapshot.dart';
+import '../../models/log_entry.dart';
 import '../serial_connection_status.dart';
 import '../serial_statistics_snapshot.dart';
 
@@ -12,6 +13,7 @@ enum SerialOperation {
   disconnect,
   statistics,
   focSnapshot,
+  logSnapshot,
   setMotorControl,
   querySoftwareVersion,
   queryMotorType,
@@ -21,6 +23,7 @@ enum SerialOperation {
   queryExternalFlashId,
   rebootMcu,
   clearProtocolError,
+  clearLogs,
   shutdown,
 }
 
@@ -70,4 +73,12 @@ class FocSnapshotResponse {
   const FocSnapshotResponse(this.revision, this.snapshot);
   final int revision;
   final FocSnapshot? snapshot;
+}
+
+/// LOG 页面按需拉取的缓存。entries 为 null 表示后台日志没有变化。
+class LogSnapshotResponse {
+  const LogSnapshotResponse(this.revision, this.entries);
+
+  final int revision;
+  final List<LogEntry>? entries;
 }

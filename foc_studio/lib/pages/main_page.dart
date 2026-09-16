@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../controllers/foc_controller.dart';
 import '../services/serial_port_service.dart';
 import '../widgets/navi_rail_bottom.dart';
+import 'log_page.dart';
 import 'mot_page.dart';
 import 'setting_page.dart';
 
@@ -40,6 +41,7 @@ class _MainPageState extends State<MainPage> {
       MotPage(controller: _focController),
       const Center(child: Text('当前是POS', style: TextStyle(fontSize: 30))),
       const Center(child: Text('当前是CHT', style: TextStyle(fontSize: 30))),
+      LogPage(serialService: _serialService),
       SettingPage(serialService: _serialService),
     ];
   }
@@ -63,7 +65,7 @@ class _MainPageState extends State<MainPage> {
 
             // SYS不是destination,
             // 所以选中SYS时，让NavigationRail没有选中项
-            selectedIndex: _selectedIndex < 3 ? _selectedIndex : null,
+            selectedIndex: _selectedIndex < 4 ? _selectedIndex : null,
 
             // 点击导航按钮
             onDestinationSelected: (index) {
@@ -105,15 +107,19 @@ class _MainPageState extends State<MainPage> {
                 icon: Icon(Icons.show_chart),
                 label: Text('CHT'),
               ),
+              NavigationRailDestination(
+                icon: Icon(Icons.terminal),
+                label: Text('LOG'),
+              ),
             ],
 
             trailing: NaviRailBottomState(
               icon: Icons.settings,
               tooltip: '设置',
-              selected: _selectedIndex == 3,
+              selected: _selectedIndex == 4,
               onTap: () {
                 setState(() {
-                  _selectedIndex = 3;
+                  _selectedIndex = 4;
                 });
               },
             ),
