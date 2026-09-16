@@ -346,10 +346,7 @@ class _ControlPanel extends StatelessWidget {
     final buttons = Wrap(
       spacing: 10,
       runSpacing: 8,
-      children: [
-        Tooltip(message: '启动电机', child: controlButton('启动', onStart)),
-        Tooltip(message: '停止电机', child: controlButton('停止', onStop)),
-      ],
+      children: [controlButton('启动', onStart), controlButton('停止', onStop)],
     );
 
     return _StackPanel(
@@ -593,8 +590,7 @@ class _FaultPanel extends StatelessWidget {
     // contentWidth 是页面内边距扣除后的宽度；面板自身还有左右 8 的
     // padding 和 1.5 的边框。多预留 1 像素，避免浮点取整后第 4 项被
     // Wrap 错误地换到下一行，从而破坏固定 4 列的布局。
-    final tileWidth =
-        (contentWidth - 20 - (_columns - 1) * 8) / _columns;
+    final tileWidth = (contentWidth - 20 - (_columns - 1) * 8) / _columns;
     final errorCode = snapshot.errorCode?.code;
 
     return _StackPanel(
