@@ -9,15 +9,6 @@ import '../controllers/foc_controller.dart';
 import '../protocol/pc_mcu/messages/configuration_messages.dart';
 import '../widgets/mot_style_panel.dart';
 
-// 页面共用的配色集中在这里，调整外观时不用逐个修改组件。
-// 0xFFRRGGBB 中 FF 表示完全不透明，后六位分别表示红、绿、蓝。
-// 名称前的下划线表示 Dart 库内私有，本文件中的组件都可以使用。
-const _pageBackground = motPageBackground;
-const _panelBorder = motPanelBorder;
-const _labelColor = motLabelColor;
-const _mutedColor = motMutedColor;
-const _valueColor = motValueColor;
-
 String? _number(double? value) => value?.toStringAsFixed(2);
 
 String? _errorCodeText(int? code) =>
@@ -131,11 +122,11 @@ class _MotPageState extends State<MotPage> {
     );
 
     return ColoredBox(
-      color: _pageBackground,
+      color: motPageBackground,
       // merge 继承上层文字样式，只覆盖字号、行高和颜色。
       // 子组件仍可覆盖局部样式；height: 1.2 表示行高为字号的 1.2 倍。
       child: DefaultTextStyle.merge(
-        style: const TextStyle(fontSize: 14, height: 1.2, color: _labelColor),
+        style: const TextStyle(fontSize: 14, height: 1.2, color: motLabelColor),
         child: LayoutBuilder(
           // constraints 是父组件允许 MOT 使用的尺寸，已经扣除了左侧导航栏。
           // 窗口大小变化时会重新执行 builder，据此选择单列或多列布局。
@@ -235,7 +226,7 @@ class _ControlPanel extends StatelessWidget {
               TextInputFormatter.withFunction(_targetSpeedInputFormatter),
             ],
             textAlign: TextAlign.right,
-            style: const TextStyle(fontSize: 14, color: _labelColor),
+            style: const TextStyle(fontSize: 14, color: motLabelColor),
             // InputDecoration 描述输入框外观。
             decoration: InputDecoration(
               isDense: true,
@@ -247,21 +238,21 @@ class _ControlPanel extends StatelessWidget {
               ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(3),
-                borderSide: const BorderSide(color: _panelBorder),
+                borderSide: const BorderSide(color: motPanelBorder),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(3),
-                borderSide: const BorderSide(color: _panelBorder),
+                borderSide: const BorderSide(color: motPanelBorder),
               ),
               // 获得输入焦点时使用蓝色边框，其余时候使用灰色边框。
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(3),
-                borderSide: const BorderSide(color: _valueColor),
+                borderSide: const BorderSide(color: motValueColor),
               ),
             ),
           ),
         ),
-        const Text('RPM', style: TextStyle(color: _mutedColor)),
+        const Text('RPM', style: TextStyle(color: motMutedColor)),
       ],
     );
     FilledButton controlButton(String label, VoidCallback callback) {
@@ -454,7 +445,7 @@ class _MonitorRow extends StatelessWidget {
               child: Text(
                 field.displayValue,
                 style: const TextStyle(
-                  color: _valueColor,
+                  color: motValueColor,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -467,7 +458,7 @@ class _MonitorRow extends StatelessWidget {
               padding: const EdgeInsets.only(left: 10),
               child: Text(
                 field.unit,
-                style: const TextStyle(color: _mutedColor),
+                style: const TextStyle(color: motMutedColor),
               ),
             ),
           ),
@@ -604,7 +595,7 @@ class _FaultTile extends StatelessWidget {
                       TextSpan(text: name),
                     ],
                   ),
-                  style: const TextStyle(fontSize: 12, color: _mutedColor),
+                  style: const TextStyle(fontSize: 12, color: motMutedColor),
                 ),
               ),
             ],
