@@ -58,18 +58,10 @@ class _NaviRailBottomState extends State<NaviRailBottomState> {
               onTap: widget.onTap,
 
               // 鼠标进入/离开
-              onHover: (value) {
-                setState(() {
-                  _hovered = value;
-                });
-              },
+              onHover: (value) => setState(() => _hovered = value),
 
               // 鼠标按下/松开
-              onHighlightChanged: (value) {
-                setState(() {
-                  _pressed = value;
-                });
-              },
+              onHighlightChanged: (value) => setState(() => _pressed = value),
 
               // 悬停和按下背景由 Material 根据状态重新构建后显示。 负责。
               hoverColor: Colors.transparent, // 透明

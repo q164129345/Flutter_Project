@@ -13,7 +13,7 @@ class SerialStatisticsPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: statistics,
-      builder: (context, child) {
+      builder: (_, _) {
         final sendingMetrics = [
           _Metric(
             label: '发送总帧数',
@@ -66,7 +66,7 @@ class SerialStatisticsPanel extends StatelessWidget {
             ),
             const SizedBox(height: 14),
             LayoutBuilder(
-              builder: (context, constraints) {
+              builder: (_, constraints) {
                 if (constraints.maxWidth < 560) {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
