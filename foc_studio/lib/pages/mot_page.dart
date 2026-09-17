@@ -293,27 +293,22 @@ class _ControlPanel extends StatelessWidget {
     return MotStylePanel(
       title: '控制',
       // 窄窗口上下排列，宽窗口左右排列；两种布局复用上面创建的组件。
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          compact
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    speedInput,
-                    const SizedBox(height: 10),
-                    Align(alignment: Alignment.centerRight, child: buttons),
-                  ],
-                )
-              : Row(
-                  children: [
-                    Expanded(child: speedInput),
-                    const SizedBox(width: 16),
-                    buttons,
-                  ],
-                ),
-        ],
-      ),
+      child: compact
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                speedInput,
+                const SizedBox(height: 10),
+                Align(alignment: Alignment.centerRight, child: buttons),
+              ],
+            )
+          : Row(
+              children: [
+                Expanded(child: speedInput),
+                const SizedBox(width: 16),
+                buttons,
+              ],
+            ),
     );
   }
 }
