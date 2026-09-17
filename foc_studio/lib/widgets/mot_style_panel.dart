@@ -26,46 +26,53 @@ class MotStylePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final panelBody = Container(
-      width: double.infinity,
-      padding: padding,
-      decoration: BoxDecoration(
-        color: motPageBackground,
-        border: Border.all(color: motPanelBorder, width: 1.5),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: child,
-    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // 表格等布局会先用无界高度测量内容，再用统一的确定高度重新布局。
+        // 无界阶段必须按内容撑开；只有拿到确定高度后才能安全地填满父组件。
+        final shouldFillHeight = fillHeight && constraints.hasBoundedHeight;
+        final panelBody = Container(
+          width: double.infinity,
+          padding: padding,
+          decoration: BoxDecoration(
+            color: motPageBackground,
+            border: Border.all(color: motPanelBorder, width: 1.5),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: child,
+        );
 
-    return Stack(
-      key: ValueKey('mot-panel-$title'),
-      clipBehavior: Clip.none,
-      children: [
-        fillHeight
-            ? Positioned.fill(top: 10, child: panelBody)
-            : Container(
-                margin: const EdgeInsets.only(top: 10),
-                child: panelBody,
-              ),
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          child: Align(
-            child: Container(
-              color: motPageBackground,
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
+        return Stack(
+          key: ValueKey('mot-panel-$title'),
+          clipBehavior: Clip.none,
+          children: [
+            shouldFillHeight
+                ? Positioned.fill(top: 10, child: panelBody)
+                : Container(
+                    margin: const EdgeInsets.only(top: 10),
+                    child: panelBody,
+                  ),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: Align(
+                child: Container(
+                  color: motPageBackground,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
 }
