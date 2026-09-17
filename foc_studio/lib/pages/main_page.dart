@@ -68,11 +68,8 @@ class _MainPageState extends State<MainPage> {
             selectedIndex: _selectedIndex < 4 ? _selectedIndex : null,
 
             // 点击导航按钮
-            onDestinationSelected: (index) {
-              setState(() {
-                _selectedIndex = index;
-              });
-            },
+            onDestinationSelected: (index) =>
+                setState(() => _selectedIndex = index),
             // 暂时把文字全部显示出来
             labelType: NavigationRailLabelType.all,
 
@@ -88,9 +85,8 @@ class _MainPageState extends State<MainPage> {
 
               // Service 调用 notifyListeners() 后，只重新执行这个 builder，
               // 不需要手动在 MainPage 中调用 setState。
-              builder: (context, child) {
-                return _SerialConnectionIndicator(service: _serialService);
-              },
+              builder: (context, _) =>
+                  _SerialConnectionIndicator(service: _serialService),
             ),
 
             // 每个可点击目的地
@@ -117,11 +113,7 @@ class _MainPageState extends State<MainPage> {
               icon: Icons.settings,
               tooltip: '设置',
               selected: _selectedIndex == 4,
-              onTap: () {
-                setState(() {
-                  _selectedIndex = 4;
-                });
-              },
+              onTap: () => setState(() => _selectedIndex = 4),
             ),
           ),
 
