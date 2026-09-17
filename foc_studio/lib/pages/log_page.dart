@@ -73,8 +73,9 @@ class _LogPageState extends State<LogPage> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
 
     return Padding(
       padding: const EdgeInsets.all(24),
@@ -147,7 +148,7 @@ class _LogPageState extends State<LogPage> {
     );
   }
 
-  String _formatTimestamp(DateTime timestamp) {
+  static String _formatTimestamp(DateTime timestamp) {
     String twoDigits(int value) => value.toString().padLeft(2, '0');
     String threeDigits(int value) => value.toString().padLeft(3, '0');
     return '${twoDigits(timestamp.hour)}:${twoDigits(timestamp.minute)}:'
