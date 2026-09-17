@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../controllers/foc_snapshot.dart';
 import '../models/log_entry.dart';
+import '../models/serial_port_info.dart';
 import 'background/serial_session_worker.dart';
 import 'background/serial_worker_messages.dart';
 import 'serial_connection_status.dart';
@@ -253,8 +254,9 @@ class SerialPortService extends ChangeNotifier {
   }
 
   /// 枚举串口也交给后台，避免驱动响应慢时卡住页面。
-  Future<List<String>> getAvailablePorts() => _withBusy(
-    () async => (await _request(SerialOperation.listPorts))! as List<String>,
+  Future<List<SerialPortInfo>> getAvailablePorts() => _withBusy(
+    () async =>
+        (await _request(SerialOperation.listPorts))! as List<SerialPortInfo>,
   );
 
   /// 等后台完成打开和配置后返回；括号里的命名记录用于传递连接参数。

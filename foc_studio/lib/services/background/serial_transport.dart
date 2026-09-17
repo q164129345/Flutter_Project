@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_libserialport/flutter_libserialport.dart';
 
+import '../../models/serial_port_info.dart';
+import '../../platform/windows_ansi_decoder.dart';
 import '../serial_connection_status.dart';
 import 'serial_statistics_accumulator.dart';
 
@@ -45,8 +47,32 @@ class SerialTransport extends ChangeNotifier {
 
   /// 每次调用都重新读取系统串口列表。
   /// USB 串口拔插后列表可能变化，所以 UI 需要提供“刷新”按钮。
-  List<String> getAvailablePorts() {
-    return SerialPort.availablePorts; // 通过系统接口枚举已存在串口名称
+  List<SerialPortInfo> getAvailablePorts() {
+    return SerialPort.availablePorts.map(_readPortInfo).toList(growable: false);
+  }
+
+  /// 描述是给用户识别设备用的，真正连接时仍只使用 [SerialPortInfo.name]。
+  /// 某个端口的描述读取失败不应中断整次扫描，退化为只显示端口名。
+  SerialPortInfo _readPortInfo(String name) {
+    SerialPort? port;
+    String? description;
+    try {
+      port = SerialPort(name);
+      description = port.description;
+      if (Platform.isWindows && description != null) {
+        description = WindowsAnsiDecoder.decodeIfSingleByte(description);
+      }
+    } catch (error) {
+      debugPrint('读取串口 $name 的描述失败：$error');
+    } finally {
+      // 这个对象只用于读取元数据，从未打开或配置；必须立即释放其 native 资源。
+      try {
+        port?.dispose();
+      } catch (error) {
+        debugPrint('释放串口 $name 的描述查询对象失败：$error');
+      }
+    }
+    return SerialPortInfo(name: name, description: description);
   }
 
   // SerialPortReader 把底层串口读取转换成 Dart Stream。

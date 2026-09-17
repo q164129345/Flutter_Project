@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../controllers/foc_controller.dart';
+import '../models/serial_port_info.dart';
 import '../protocol/pc_mcu/messages/configuration_messages.dart';
 import '../services/serial_port_service.dart';
 import '../widgets/mot_style_panel.dart';
@@ -26,7 +27,7 @@ class _SettingPageState extends State<SettingPage> {
   SerialPortService get _serialService => widget.serialService;
   FocController get _controller => widget.controller;
 
-  List<String> _ports = [];
+  List<SerialPortInfo> _ports = [];
   bool _scanning = false;
   Object? _scanError;
   int _scanGeneration = 0;
@@ -77,8 +78,8 @@ class _SettingPageState extends State<SettingPage> {
       _status = _connectionStatusText;
       final connectedPort = _serialService.connectedPortName;
       if (connectedPort != null) {
-        if (!_ports.contains(connectedPort)) {
-          _ports = [..._ports, connectedPort];
+        if (!_ports.any((port) => port.name == connectedPort)) {
+          _ports = [..._ports, SerialPortInfo(name: connectedPort)];
         }
         _selectedPort = connectedPort;
       }
@@ -136,12 +137,15 @@ class _SettingPageState extends State<SettingPage> {
     });
 
     final connectedPort = service.connectedPortName;
-    List<String>? ports;
+    List<SerialPortInfo>? ports;
     Object? scanError;
     try {
-      ports = connectedPort != null
-          ? [connectedPort]
-          : await service.getAvailablePorts();
+      ports = await service.getAvailablePorts();
+      // 正在连接的端口也可能刚好被系统扫描遗漏；保留它以使选择值始终有效。
+      if (connectedPort != null &&
+          !ports.any((port) => port.name == connectedPort)) {
+        ports = [...ports, SerialPortInfo(name: connectedPort)];
+      }
     } catch (error) {
       scanError = error;
     }
@@ -157,8 +161,8 @@ class _SettingPageState extends State<SettingPage> {
       _scanError = scanError;
       if (ports == null) return;
       _ports = ports;
-      if (!ports.contains(_selectedPort)) {
-        _selectedPort = ports.firstOrNull;
+      if (!ports.any((port) => port.name == _selectedPort)) {
+        _selectedPort = ports.firstOrNull?.name;
       }
       _status = _connectionStatusText;
     });
@@ -273,9 +277,9 @@ class _SettingPageState extends State<SettingPage> {
                                 items: _ports
                                     .map(
                                       (port) => DropdownMenuItem<String>(
-                                        value: port,
+                                        value: port.name,
                                         child: Text(
-                                          port,
+                                          port.displayLabel,
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
